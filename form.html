@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Regen Home Energy Use Form</title>
+<meta name="description" content="Tell Regen which electrical appliances you use and when, so we can design the right hybrid solar system for your home.">
+<meta name="theme-color" content="#10264a">
+<link rel="stylesheet" href="common.css">
+<style>
+.intro{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.intro h1{font-size:22px;color:var(--navy)}
+.intro p{margin:0;max-width:68ch}
+.intro .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.cats{display:flex;flex-direction:column;gap:8px}
+.cat{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.cat>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;align-items:center;gap:8px;font-weight:700;color:var(--navy)}
+.cat>summary::-webkit-details-marker{display:none}
+.cat>summary::after{content:"+";margin-left:auto;font-size:20px;line-height:1;color:var(--muted)}
+.cat[open]>summary::after{content:"–"}
+.cat .count{font-size:12px;font-weight:700;background:var(--gold);color:var(--navy);border-radius:10px;padding:1px 8px}
+.items{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;padding:0 12px 12px}
+.item-add{display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;border:1px dashed var(--line-2);background:#fbfcfe;border-radius:8px;padding:9px 11px;cursor:pointer;min-height:44px}
+.item-add:hover{border-color:var(--navy-2);background:#f2f6fc}
+.item-add b{font-weight:600;font-size:14px}
+.item-add span{font-size:12px;color:var(--muted);white-space:nowrap}
+.item-add.added{border-style:solid;border-color:var(--navy-2)}
+.item-add.added::after{content:"✓";color:var(--navy-2);font-weight:800}
+
+.alist{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.ap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:12px}
+.ap-h{display:flex;align-items:flex-start;gap:10px}
+.ap-h .nm{flex:1;min-width:0}
+.ap-h .nm b{font-size:15.5px;color:var(--navy)}
+.ap-h .nm .muted{font-size:12px}
+.ap-h input{font-weight:600}
+.x{border:1px solid var(--line-2);background:#fff;border-radius:8px;width:36px;height:36px;cursor:pointer;color:var(--bad);font-size:18px;flex:none}
+.ap-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 14px;align-items:end}
+.ap-g .pwf{grid-column:1/-1}
+.pwf .pw{max-width:300px}
+.step{display:flex;align-items:center;border:1px solid var(--line-2);border-radius:8px;overflow:hidden;background:#fff;width:max-content}
+.step button{border:0;background:#f4f6fa;width:38px;height:38px;font-size:18px;cursor:pointer;color:var(--navy)}
+.step input{width:56px;border:0;text-align:center;min-height:38px;padding:0;border-radius:0}
+.qs{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:center}
+.qs .q{display:flex;flex-direction:column;gap:5px}
+.empty{border:1px dashed var(--line-2);border-radius:var(--radius);padding:18px;text-align:center;color:var(--muted);background:#fbfcfe}
+.sig-wrap{display:flex;flex-direction:column;gap:6px}
+#sig{width:100%;max-width:520px;height:160px;border:1px solid var(--line-2);border-radius:8px;background:#fff;touch-action:none;cursor:crosshair}
+.check{display:flex;gap:10px;align-items:flex-start}
+.check input{width:20px;height:20px;margin-top:2px;flex:none}
+.bar{position:sticky;bottom:0;z-index:15;background:rgba(255,255,255,.96);border-top:1px solid var(--line);margin-top:24px;
+  padding-bottom:env(safe-area-inset-bottom,0px);backdrop-filter:blur(6px)}
+.bar .wrap{display:flex;align-items:center;gap:10px;padding-block:10px}
+.bar .sum{flex:1;font-size:13px;color:var(--muted);min-width:0}
+.bar .sum b{color:var(--navy)}
+.errs{background:var(--bad-soft);color:var(--bad);border-radius:8px;padding:10px 12px;font-size:14px}
+.errs ul{margin:4px 0 0;padding-left:18px}
+.done-acts{display:flex;flex-direction:column;gap:8px}
+.done-acts .btn{justify-content:flex-start}
+.solar-extra[hidden]{display:none}
+
+/* ---------- print (A4 landscape) ---------- */
+@media print{
+  @page{size:A4 landscape;margin:9mm 9mm 8mm}
+  body{background:#fff;font-size:9.5pt}
+  .screen{display:none!important}
+  #printArea{display:block}
+  .pt{width:100%;border-collapse:collapse}
+  .pt>thead>tr>td,.pt>tfoot>tr>td{padding:0}
+  .pf-space{height:19mm}
+  .pfoot{position:fixed;bottom:0;left:0;right:0;font-size:6.6pt;color:#4a5568;border-top:0.4pt solid #9aa5b8;padding-top:1.2mm;line-height:1.35}
+  .pfoot b{color:#16213a}
+  .ph{display:flex;align-items:center;gap:4mm;border-bottom:1.2pt solid #10264a;padding-bottom:2mm;margin-bottom:3mm}
+  .ph h1{font-size:14pt;color:#10264a}
+  .ph .co{margin-left:auto;text-align:right;font-size:8pt;color:#4a5568}
+  .pinst{font-size:8.3pt;margin:0 0 3mm;color:#16213a}
+  .pgrid{display:grid;grid-template-columns:1fr 1fr;gap:3mm 6mm;margin-bottom:3mm}
+  .pbox h2{font-size:10pt;color:#fff;background:#10264a;padding:1.2mm 2mm;margin:0 0 1.5mm}
+  .kv{width:100%;border-collapse:collapse}
+  .kv td{border:0.4pt solid #9aa5b8;padding:1.4mm 2mm;height:7mm;vertical-align:top;font-size:8.6pt}
+  .kv td.k{width:36%;background:#f1f4f9;font-weight:600;color:#33415c}
+  .opt{display:inline-block;margin-right:3mm;white-space:nowrap}
+  .opt::before{content:"";display:inline-block;width:2.6mm;height:2.6mm;border:0.6pt solid #33415c;margin-right:1mm;vertical-align:-0.3mm}
+  .opt.sel::before{background:#10264a}
+  .at{width:100%;border-collapse:collapse;font-size:7.6pt;table-layout:fixed}
+  .at th,.at td{border:0.4pt solid #9aa5b8;padding:0.6mm 0.8mm;text-align:center;height:5.6mm}
+  .at th{background:#10264a;color:#fff;font-weight:600;font-size:7pt}
+  .at th.g{background:#1f4e8c}
+  .at td.nm{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .at td.nm small{color:#5b6680}
+  .at td.h{padding:0}
+  .at td.h.on{background:#1f4e8c}
+  .at tr.cat td{background:#e8edf5;font-weight:700;text-align:left;color:#10264a}
+  .at tr{break-inside:avoid}
+  .at thead{display:table-header-group}
+  .psig{display:grid;grid-template-columns:2fr 1fr 1.3fr;gap:5mm;margin-top:4mm;break-inside:avoid}
+  .psig .ln{border-bottom:0.6pt solid #33415c;height:14mm;display:flex;align-items:flex-end;padding-bottom:1mm;font-size:9pt}
+  .psig .ln img{max-height:13mm}
+  .psig .cap{font-size:7.6pt;color:#4a5568;margin-top:1mm}
+  .brk{break-before:page}
+  .office{margin-top:3mm;border:0.6pt dashed #9aa5b8;padding:2mm;font-size:7.6pt;color:#4a5568}
+}
+</style>
+</head>
+<body>
+<header class="topbar screen">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="31" fill="#e0a526"/><circle cx="32" cy="32" r="12" fill="#10264a"/><g stroke="#10264a" stroke-width="4" stroke-linecap="round"><path d="M32 8v8M32 48v8M8 32h8M48 32h8M15 15l6 6M43 43l6 6M15 49l6-6M43 21l6-6"/></g></svg>
+      <div class="brand-txt"><b>Regen</b><span>Home Energy Use Form</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap screen" id="app">
+  <section class="intro">
+    <h1>Your appliances and when you use them</h1>
+    <p>This form helps Regen design a hybrid solar system that can run your home, including during power cuts. List the electrical appliances you have, how many, and the hours you usually use them. It takes about 10 minutes. Your answers are saved on this phone as you go.</p>
+    <div class="row">
+      <button class="btn sm" type="button" id="printBlank">Prefer paper? Print a blank form</button>
+    </div>
+  </section>
+
+  <div class="sec-h"><span class="step">1</span><h2>Your details</h2></div>
+  <div class="card grid">
+    <div class="fld"><label for="c_name">Full name <span class="req">*</span></label><input id="c_name" type="text" autocomplete="name" data-c="name"></div>
+    <div class="fld"><label for="c_phone">Mobile number <span class="req">*</span></label><input id="c_phone" type="tel" autocomplete="tel" data-c="phone"></div>
+    <div class="fld"><label for="c_email">Email</label><input id="c_email" type="email" autocomplete="email" data-c="email"></div>
+    <div class="fld span2"><label for="c_address">Installation address <span class="req">*</span></label><textarea id="c_address" data-c="address" autocomplete="street-address"></textarea></div>
+  </div>
+
+  <div class="sec-h"><span class="step">2</span><h2>Electricity connection</h2><p>From your electricity bill</p></div>
+  <div class="card grid">
+    <div class="fld"><span class="lbl">Electricity supplier</span><div class="seg" data-seg="utility"><button type="button" data-v="CEB">CEB</button><button type="button" data-v="LECO">LECO</button></div></div>
+    <div class="fld"><label for="c_account">Electricity account number <span class="req">*</span></label><input id="c_account" type="text" inputmode="numeric" data-c="account"></div>
+    <div class="fld"><label for="c_billName">Name on the bill</label><input id="c_billName" type="text" data-c="billName"></div>
+    <div class="fld"><label for="c_supply">Supply type</label><select id="c_supply" data-c="supply"><option value="">Select</option><option>Single-phase</option><option>Three-phase</option><option>Not sure</option></select></div>
+    <div class="fld"><label for="c_capacity">Connection capacity</label><select id="c_capacity" data-c="capacity"><option value="">Select</option><option>15 A</option><option>30 A</option><option>60 A</option><option>Other</option><option>Not sure</option></select></div>
+    <div class="fld"><label for="c_tariff">Tariff category</label><select id="c_tariff" data-c="tariff"><option>Domestic</option><option>Religious &amp; charitable</option><option>General purpose</option><option>Industrial</option><option>Other</option></select></div>
+    <div class="fld"><label for="c_units">Average monthly units (kWh)</label><input id="c_units" type="number" inputmode="decimal" min="0" data-c="units"></div>
+    <div class="fld"><label for="c_bill">Average monthly bill (Rs.)</label><input id="c_bill" type="number" inputmode="decimal" min="0" data-c="bill"></div>
+    <div class="fld"><span class="lbl">Do you already have solar panels?</span><div class="seg" data-seg="solar"><button type="button" data-v="No">No</button><button type="button" data-v="Yes">Yes</button></div></div>
+    <div class="fld solar-extra"><label for="c_solarKw">Existing solar size (kW)</label><input id="c_solarKw" type="number" inputmode="decimal" min="0" data-c="solarKw"></div>
+    <div class="fld solar-extra"><label for="c_solarScheme">Solar scheme</label><select id="c_solarScheme" data-c="solarScheme"><option value="">Select</option><option>Net metering</option><option>Net accounting</option><option>Net plus</option><option>Not sure</option></select></div>
+    <div class="fld"><label for="c_outages">How often do you have power cuts?</label><select id="c_outages" data-c="outages"><option value="">Select</option><option>Rarely</option><option>A few times a month</option><option>Every week</option><option>Every day</option></select></div>
+    <div class="fld"><label for="c_backupHrs">Backup needed during a power cut (hours)</label><input id="c_backupHrs" type="number" inputmode="decimal" min="0" data-c="backupHrs"></div>
+    <div class="fld span2"><label for="c_notes">Anything else we should know?</label><textarea id="c_notes" data-c="notes" placeholder="For example: planning to buy an air conditioner next year, home office, elderly family members at home during the day"></textarea></div>
+    <p class="hint span2" style="margin:0">Please also send us a photo of a recent electricity bill with this form.</p>
+  </div>
+
+  <div class="sec-h"><span class="step">3</span><h2>Your appliances</h2></div>
+  <p class="muted small" style="margin:0 0 10px">Tap an appliance to add it, then tell us how many you have and the hours you usually use it. If you know the power rating from the label (W or kW), change the typical value we show.</p>
+  <div class="cats" id="cats"></div>
+  <div class="alist" id="alist"></div>
+  <div style="margin-top:10px"><button class="btn" type="button" id="addCustom">+ Add an appliance that isn't listed</button></div>
+
+  <div class="sec-h"><span class="step">4</span><h2>Declaration</h2></div>
+  <div class="card" style="display:flex;flex-direction:column;gap:14px">
+    <label class="check" for="c_confirm"><input id="c_confirm" type="checkbox"><span>I confirm that the information in this form is correct to the best of my knowledge, and I agree that Regen may use it to design my solar system.</span></label>
+    <div class="grid">
+      <div class="fld"><label for="c_declName">Name</label><input id="c_declName" type="text" data-c="declName"></div>
+      <div class="fld"><label for="c_declDate">Date</label><input id="c_declDate" type="date" data-c="declDate"></div>
+    </div>
+    <div class="sig-wrap">
+      <span class="lbl">Signature <span class="req" style="color:var(--bad)">*</span> — sign with your finger or mouse</span>
+      <canvas id="sig" aria-label="Signature pad"></canvas>
+      <div><button class="btn sm" type="button" id="sigClear">Clear signature</button></div>
+    </div>
+  </div>
+
+  <footer class="legal">
+    <b id="lgCopy"></b><br><span id="lgNotice"></span><br><span id="lgCo"></span>
+  </footer>
+</main>
+
+<div class="bar screen">
+  <div class="wrap">
+    <div class="sum" id="sum"></div>
+    <button class="btn gold" type="button" id="finish">Finish &amp; send</button>
+  </div>
+</div>
+
+<div id="printArea"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="common.js"></script>
+<script>
+(() => {
+  const H = HLC, $ = s => document.querySelector(s);
+  const params = new URLSearchParams(location.search);
+  let state = H.store.get('form_draft') || { customer: H.emptyCustomer(), appliances: [], confirm: false };
+  state.customer = Object.assign(H.emptyCustomer(), state.customer || {});
+  state.appliances = (state.appliances || []).map(H.normalise);
+  if (!state.customer.declDate) state.customer.declDate = H.today();
+
+  let saveT;
+  const save = () => { clearTimeout(saveT); saveT = setTimeout(() => H.store.set('form_draft', state), 250); updateSum(); };
+  const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); };
+
+  // legal footer
+  $('#lgCopy').textContent = H.copyright(); $('#lgNotice').textContent = H.NOTICE; $('#lgCo').textContent = H.COMPANY_LINE;
+
+  // ---------- customer fields ----------
+  document.querySelectorAll('[data-c]').forEach(el => {
+    el.value = state.customer[el.dataset.c] ?? '';
+    el.addEventListener('input', () => { state.customer[el.dataset.c] = el.value; save(); });
+  });
+  document.querySelectorAll('[data-seg]').forEach(seg => {
+    const key = seg.dataset.seg;
+    const paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === state.customer[key]));
+    seg.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.customer[key] = b.dataset.v; paint(); solarVis(); save(); });
+    paint();
+  });
+  const solarVis = () => document.querySelectorAll('.solar-extra').forEach(el => el.hidden = state.customer.solar !== 'Yes');
+  solarVis();
+  const conf = $('#c_confirm'); conf.checked = !!state.confirm;
+  conf.addEventListener('change', () => { state.confirm = conf.checked; save(); });
+
+  // ---------- catalogue ----------
+  function renderCats() {
+    const added = new Set(state.appliances.map(a => a.k));
+    const openIds = new Set([...document.querySelectorAll('.cat[open]')].map(d => d.dataset.cat));
+    $('#cats').innerHTML = H.CATS.map(c => {
+      const n = state.appliances.filter(a => a.cat === c.id).length;
+      return `<details class="cat" data-cat="${c.id}"${openIds.has(c.id) ? ' open' : ''}><summary>${H.esc(c.name)}${n ? `<span class="count">${n}</span>` : ''}</summary><div class="items">` +
+        c.items.map(it => `<button type="button" class="item-add${added.has(it.k) && it.k !== 'custom' ? ' added' : ''}" data-add="${it.k}"><b>${H.esc(it.k === 'custom' ? '+ Other appliance (type its name)' : it.n)}</b>${it.w ? `<span>~${it.w >= 1000 ? (it.w / 1000) + ' kW' : it.w + ' W'}</span>` : ''}</button>`).join('') +
+        '</div></details>';
+    }).join('');
+  }
+  $('#addCustom').addEventListener('click', () => addItem('custom'));
+  $('#cats').addEventListener('click', e => {
+    const b = e.target.closest('[data-add]'); if (!b) return;
+    addItem(b.dataset.add);
+  });
+  function addItem(k) {
+    const exist = state.appliances.find(a => a.k === k && k !== 'custom');
+    if (exist) { const el = document.querySelector(`.ap[data-id="${exist.id}"]`); el && el.scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('Already added — change the quantity below'); return; }
+    const a = H.newAppliance(k);
+    state.appliances.push(a);
+    save(); renderCats(); renderList();
+    const el = document.querySelector(`.ap[data-id="${a.id}"]`);
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (k === 'custom') el.querySelector('[data-f="name"]').focus(); }
+    toast(`${a.name || 'Appliance'} added`);
+  }
+
+  // ---------- appliance cards ----------
+  const pwVal = a => a.unit === 'kW' ? +(a.w / 1000).toFixed(3) : +a.w.toFixed(1);
+  function cardHTML(a) {
+    const it = H.ITEM[a.k];
+    const typ = it && it.w ? `Typical: ${it.w >= 1000 ? (it.w / 1000) + ' kW' : it.w + ' W'} each` : 'Enter the power from the label';
+    return `<div class="ap" data-id="${a.id}">
+      <div class="ap-h"><div class="nm">${a.k === 'custom'
+        ? `<label class="lbl" for="n_${a.id}">Appliance name</label><input id="n_${a.id}" type="text" data-f="name" value="${H.esc(a.name)}" placeholder="e.g. Pressure cooker">`
+        : `<b>${H.esc(a.name)}</b><div class="muted">${H.esc(H.CAT_NAME[a.cat] || '')}</div>`}</div>
+        <button type="button" class="x" data-act="del" aria-label="Remove ${H.esc(a.name || 'appliance')}">×</button></div>
+      <div class="ap-g">
+        <div class="fld"><span class="lbl">How many do you have?</span><div class="step"><button type="button" data-act="q-">−</button><input type="number" inputmode="numeric" min="0" data-f="qty" value="${a.qty}" aria-label="Quantity"><button type="button" data-act="q+">+</button></div></div>
+        <div class="fld"><span class="lbl">Used at the same time</span><div class="step"><button type="button" data-act="o-">−</button><input type="number" inputmode="numeric" min="0" data-f="qtyOn" value="${a.qtyOn}" aria-label="Used at the same time"><button type="button" data-act="o+">+</button></div></div>
+        <div class="fld pwf"><label class="lbl" for="w_${a.id}">Power rating (each)</label><div class="pw"><input id="w_${a.id}" type="number" inputmode="decimal" min="0" step="any" data-f="w" value="${pwVal(a)}"><div class="seg" data-unit><button type="button" data-v="W" class="${a.unit === 'W' ? 'on' : ''}">W</button><button type="button" data-v="kW" class="${a.unit === 'kW' ? 'on' : ''}">kW</button></div></div><span class="hint">${typ}</span></div>
+      </div>
+      <div class="fld"><span class="lbl">When do you usually use it? Tap each hour it is on.</span>${H.hourPickerHTML(a.hrs)}</div>
+      <div class="ap-g">
+        <div class="fld"><label class="lbl" for="h_${a.id}">Hours used per day</label><input id="h_${a.id}" type="number" inputmode="decimal" min="0" max="24" step="0.5" data-f="hpd" value="${a.hpd}"><span class="hint">Filled in from the hours you tapped. Change it if the appliance runs for less time inside those hours.</span></div>
+        <div class="fld"><label class="lbl" for="u_${a.id}">How often</label><select id="u_${a.id}" data-f="use">${Object.entries(H.USE_LABEL).map(([k, v]) => `<option value="${k}"${a.use === k ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
+      </div>
+      <div class="qs">
+        <div class="q"><span class="lbl">Needed during power cuts?</span><div class="seg" data-yn="b"><button type="button" data-v="1" class="${a.b ? 'on' : ''}">Yes</button><button type="button" data-v="0" class="${!a.b ? 'on' : ''}">No</button></div></div>
+        <div class="q"><span class="lbl">Could you use it at a different time if needed?</span><div class="seg" data-yn="f"><button type="button" data-v="1" class="${a.f ? 'on' : ''}">Yes</button><button type="button" data-v="0" class="${!a.f ? 'on' : ''}">No</button></div></div>
+      </div>
+      <div class="fld"><label class="lbl" for="t_${a.id}">Notes (optional)</label><input id="t_${a.id}" type="text" data-f="notes" value="${H.esc(a.notes)}" placeholder="Brand/model, room, or anything special about how you use it"></div>
+    </div>`;
+  }
+  function renderList() {
+    const L = $('#alist');
+    L.innerHTML = state.appliances.length ? state.appliances.map(cardHTML).join('') : '<div class="empty">No appliances added yet. Open a group above and tap an appliance to add it.</div>';
+  }
+  const findA = el => { const c = el.closest('.ap'); return c && state.appliances.find(a => a.id === c.dataset.id); };
+  $('#alist').addEventListener('click', e => {
+    const a = findA(e.target); if (!a) return;
+    const card = e.target.closest('.ap');
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'del') { state.appliances = state.appliances.filter(x => x !== a); save(); renderCats(); renderList(); return; }
+    if (act && /^[qo][+-]$/.test(act)) {
+      const f = act[0] === 'q' ? 'qty' : 'qtyOn', d = act[1] === '+' ? 1 : -1;
+      a[f] = Math.max(0, a[f] + d);
+      if (f === 'qty') { if (a.qtyOn === a.qty - d || a.qtyOn > a.qty) a.qtyOn = a.qty; }
+      else a.qtyOn = Math.min(a.qtyOn, a.qty);
+      card.querySelector('[data-f="qty"]').value = a.qty; card.querySelector('[data-f="qtyOn"]').value = a.qtyOn;
+      save(); return;
+    }
+    const hc = e.target.closest('.hp-c');
+    if (hc) { const h = +hc.dataset.h; a.hrs[h] = a.hrs[h] ? 0 : 1; hc.classList.toggle('on', !!a.hrs[h]); hc.setAttribute('aria-pressed', a.hrs[h] ? 'true' : 'false'); syncHpd(a, card); save(); return; }
+    const pre = e.target.closest('[data-pre]');
+    if (pre) { H.applyPreset(a.hrs, pre.dataset.pre); card.querySelectorAll('.hp-c').forEach(c => { const on = !!a.hrs[+c.dataset.h]; c.classList.toggle('on', on); c.setAttribute('aria-pressed', on); }); syncHpd(a, card); save(); return; }
+    const u = e.target.closest('[data-unit] button');
+    if (u) { a.unit = u.dataset.v; u.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === u)); card.querySelector('[data-f="w"]').value = pwVal(a); save(); return; }
+    const yn = e.target.closest('[data-yn] button');
+    if (yn) { const k = yn.parentElement.dataset.yn; a[k] = yn.dataset.v === '1'; yn.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === yn)); save(); }
+  });
+  function syncHpd(a, card) { if (!a.hpdManual) { a.hpd = H.countHrs(a.hrs); card.querySelector('[data-f="hpd"]').value = a.hpd; } }
+  $('#alist').addEventListener('input', e => {
+    const a = findA(e.target); const f = e.target.dataset.f; if (!a || !f) return;
+    const v = e.target.value;
+    if (f === 'name' || f === 'notes' || f === 'use') a[f] = v;
+    else if (f === 'w') a.w = Math.max(0, H.num(v)) * (a.unit === 'kW' ? 1000 : 1);
+    else if (f === 'hpd') { a.hpdManual = v !== '' && +v !== H.countHrs(a.hrs); a.hpd = Math.min(24, Math.max(0, H.num(v, H.countHrs(a.hrs)))); }
+    else if (f === 'qty') { a.qty = Math.max(0, Math.round(H.num(v))); if (a.qtyOn > a.qty) a.qtyOn = a.qty; }
+    else if (f === 'qtyOn') { a.qtyOn = Math.max(0, Math.min(a.qty, Math.round(H.num(v)))); }
+    save();
+  });
+  $('#alist').addEventListener('change', e => { const a = findA(e.target); if (a && e.target.dataset.f === 'use') { a.use = e.target.value; save(); } if (a && e.target.dataset.f === 'qtyOn') e.target.value = a.qtyOn; });
+
+  function updateSum() {
+    const n = state.appliances.length, kw = state.appliances.reduce((s, a) => s + a.qty * a.w, 0) / 1000;
+    $('#sum').innerHTML = n ? `<b>${n}</b> appliance${n > 1 ? 's' : ''} added · <b>${kw.toFixed(2)} kW</b> connected` : 'Add your appliances in step 3';
+  }
+
+  // ---------- signature pad ----------
+  const cv = $('#sig'), g = cv.getContext('2d');
+  let drawing = false, last = null, dirty = false;
+  function sizeCanvas() {
+    const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, r.width * dpr); cv.height = Math.max(1, r.height * dpr);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.lineWidth = 2.2; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#10264a';
+    if (state.customer.signature) { const im = new Image(); im.onload = () => g.drawImage(im, 0, 0, r.width, r.height); im.src = state.customer.signature; }
+  }
+  const pt = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  cv.addEventListener('pointerdown', e => { drawing = true; last = pt(e); cv.setPointerCapture(e.pointerId); g.beginPath(); g.arc(last.x, last.y, 1, 0, 7); g.fillStyle = '#10264a'; g.fill(); dirty = true; });
+  cv.addEventListener('pointermove', e => { if (!drawing) return; const p = pt(e); g.beginPath(); g.moveTo(last.x, last.y); g.lineTo(p.x, p.y); g.stroke(); last = p; dirty = true; });
+  const endSig = () => { if (!drawing) return; drawing = false; if (dirty) { state.customer.signature = cv.toDataURL('image/png'); save(); } };
+  cv.addEventListener('pointerup', endSig); cv.addEventListener('pointercancel', endSig);
+  $('#sigClear').addEventListener('click', () => { g.clearRect(0, 0, cv.width, cv.height); state.customer.signature = ''; dirty = false; save(); });
+  window.addEventListener('resize', () => { clearTimeout(sizeCanvas.t); sizeCanvas.t = setTimeout(sizeCanvas, 200); });
+
+  // ---------- finish ----------
+  function validate() {
+    const c = state.customer, e = [];
+    if (!c.name.trim()) e.push('Enter your full name (step 1).');
+    if (!c.phone.trim()) e.push('Enter your mobile number (step 1).');
+    if (!c.address.trim()) e.push('Enter the installation address (step 1).');
+    if (!c.account.trim()) e.push('Enter your electricity account number (step 2).');
+    if (!state.appliances.length) e.push('Add at least one appliance (step 3).');
+    state.appliances.forEach(a => {
+      const nm = a.name || 'An appliance';
+      if (a.k === 'custom' && !a.name.trim()) e.push('Type a name for each "Other appliance" (step 3).');
+      if (!a.w) e.push(`${nm}: enter the power rating.`);
+      if (!H.countHrs(a.hrs)) e.push(`${nm}: tap the hours you use it.`);
+    });
+    if (!state.confirm) e.push('Tick the declaration box (step 4).');
+    if (!c.signature) e.push('Sign in the signature box (step 4).');
+    return [...new Set(e)];
+  }
+  const payload = () => ({ type: H.FORM_TYPE, v: H.VERSION, submitted: new Date().toISOString(), customer: state.customer, appliances: state.appliances });
+  const fileName = () => `Regen_LoadForm_${H.safeName(state.customer.name)}_${H.today()}.json`;
+
+  function modal(html) {
+    const bg = document.createElement('div'); bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
+    bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('[data-close]')) bg.remove(); });
+    document.body.appendChild(bg); return bg;
+  }
+  $('#finish').addEventListener('click', () => {
+    const errs = validate();
+    if (errs.length) {
+      modal(`<h3>A few things are missing</h3><div class="errs"><ul>${errs.slice(0, 12).map(x => `<li>${H.esc(x)}</li>`).join('')}</ul></div><div class="acts"><button class="btn primary" data-close>Go back and fix</button></div>`);
+      return;
+    }
+    const m = modal(`<h3>Your form is ready</h3>
+      <p class="muted" style="margin-top:0">Send the form file to your Regen contact on WhatsApp or email. Regen opens it in the load calculator to check which inverter size suits your home.</p>
+      <div class="done-acts">
+        <button class="btn gold" data-do="share">Send form file (WhatsApp / email)</button>
+        <button class="btn" data-do="dl">Download form file</button>
+        <button class="btn" data-do="pdf">Save a PDF copy for your records</button>
+      </div>
+      <p class="hint" style="margin-bottom:0">The file name is <b>${H.esc(fileName())}</b>. Please also send a photo of a recent electricity bill.</p>
+      <div class="acts"><button class="btn" data-close>Close</button></div>`);
+    m.addEventListener('click', async e => {
+      const d = e.target.closest('[data-do]')?.dataset.do; if (!d) return;
+      const json = JSON.stringify(payload(), null, 1);
+      if (d === 'share') { const r = await H.shareFile(fileName(), json, 'application/json', 'Regen load form', `Home energy use form – ${state.customer.name}`); if (r === 'downloaded') toast('Saved to Downloads — attach it in WhatsApp or email'); }
+      if (d === 'dl') { H.download(fileName(), json, 'application/json'); toast('Form file saved to Downloads'); }
+      if (d === 'pdf') { buildPrint(false); setTimeout(() => window.print(), 50); }
+    });
+  });
+
+  // ---------- printable form (blank or filled) ----------
+  function optList(opts, sel) { return opts.map(o => `<span class="opt${sel === o ? ' sel' : ''}">${H.esc(o)}</span>`).join(''); }
+  function buildPrint(blank) {
+    const c = blank ? H.emptyCustomer() : state.customer;
+    const v = k => blank ? '' : H.esc(c[k]);
+    const logo = `<svg width="30" height="30" viewBox="0 0 64 64"><circle cx="32" cy="32" r="31" fill="#e0a526"/><circle cx="32" cy="32" r="12" fill="#10264a"/><g stroke="#10264a" stroke-width="4" stroke-linecap="round"><path d="M32 8v8M32 48v8M8 32h8M48 32h8M15 15l6 6M43 43l6 6M15 49l6-6M43 21l6-6"/></g></svg>`;
+    const head = `<div class="ph">${logo}<div><h1>Home Energy Use Form – Hybrid Solar System</h1><div style="font-size:8pt;color:#4a5568">Appliance list, hours of use and electricity connection details</div></div><div class="co"><b>${H.COMPANY.name}</b><br>${H.COMPANY.addr}<br>${H.COMPANY.web}</div></div>`;
+    const det = `<div class="pgrid">
+      <div class="pbox"><h2>1. Customer details</h2><table class="kv">
+        <tr><td class="k">Full name</td><td>${v('name')}</td></tr>
+        <tr><td class="k">Mobile number</td><td>${v('phone')}</td></tr>
+        <tr><td class="k">Email</td><td>${v('email')}</td></tr>
+        <tr><td class="k">Installation address</td><td style="height:14mm">${v('address')}</td></tr>
+        <tr><td class="k">Other information</td><td style="height:14mm">${v('notes')}</td></tr>
+      </table></div>
+      <div class="pbox"><h2>2. Electricity connection</h2><table class="kv">
+        <tr><td class="k">Supplier</td><td>${optList(['CEB', 'LECO'], blank ? '' : c.utility)}</td></tr>
+        <tr><td class="k">Account number</td><td>${v('account')}</td></tr>
+        <tr><td class="k">Name on the bill</td><td>${v('billName')}</td></tr>
+        <tr><td class="k">Supply type</td><td>${optList(['Single-phase', 'Three-phase', 'Not sure'], c.supply)}</td></tr>
+        <tr><td class="k">Connection capacity</td><td>${optList(['15 A', '30 A', '60 A', 'Other', 'Not sure'], c.capacity)}</td></tr>
+        <tr><td class="k">Tariff category</td><td>${blank ? optList(['Domestic', 'Religious & charitable', 'General purpose', 'Other'], '') : v('tariff')}</td></tr>
+        <tr><td class="k">Avg. monthly units / bill</td><td>${blank ? '__________ kWh &nbsp;&nbsp; Rs. __________' : `${v('units') || '—'} kWh &nbsp;·&nbsp; Rs. ${v('bill') || '—'}`}</td></tr>
+        <tr><td class="k">Existing solar</td><td>${optList(['No', 'Yes'], blank ? '' : c.solar)} ${blank ? '_____ kW &nbsp; Scheme: __________' : (c.solar === 'Yes' ? `${v('solarKw')} kW · ${v('solarScheme')}` : '')}</td></tr>
+        <tr><td class="k">Power cuts</td><td>${optList(['Rarely', 'A few times a month', 'Every week', 'Every day'], c.outages)}</td></tr>
+        <tr><td class="k">Backup needed</td><td>${blank ? '__________ hours' : `${v('backupHrs') || '—'} hours`}</td></tr>
+      </table></div></div>`;
+    const inst = `<p class="pinst"><b>How to fill in the appliance table:</b> for each appliance you have, write how many you have, how many are used at the same time and the power rating from the label (W or kW). Shade or tick each hour box when the appliance is normally on (for example, a TV used from 7 PM to 10 PM: tick 7p, 8p and 9p). Write Y or N for "Needed in power cut" and "Can change time".</p>`;
+    // appliance table
+    let hdr = `<thead><tr><th rowspan="2" style="width:6mm">#</th><th rowspan="2" style="width:70mm">Appliance <small>(typical W)</small></th><th rowspan="2" style="width:9mm">Qty</th><th rowspan="2" style="width:12mm">Used at same time</th><th rowspan="2" style="width:14mm">Watts each</th>`;
+    [['Night', 0], ['Morning', 6], ['Afternoon', 12], ['Evening', 18]].forEach(([n]) => hdr += `<th colspan="6" class="g">${n}</th>`);
+    hdr += `<th rowspan="2" style="width:10mm">Hours / day</th><th rowspan="2" style="width:11mm">Needed in power cut</th><th rowspan="2" style="width:11mm">Can change time</th></tr><tr>`;
+    for (let h = 0; h < 24; h++) hdr += `<th style="width:4.9mm;padding:0">${H.ampmShort(h)}</th>`;
+    hdr += '</tr></thead>';
+    let body = '<tbody>', i = 0;
+    const row = (name, typ, a) => {
+      i++;
+      let r = `<tr><td>${i}</td><td class="nm">${name}${typ ? ` <small>(${typ})</small>` : ''}</td><td>${a ? a.qty : ''}</td><td>${a ? a.qtyOn : ''}</td><td>${a ? (a.unit === 'kW' ? (a.w / 1000) + ' kW' : a.w) : ''}</td>`;
+      for (let h = 0; h < 24; h++) r += `<td class="h${a && a.hrs[h] ? ' on' : ''}"></td>`;
+      r += `<td>${a ? a.hpd : ''}</td><td>${a ? (a.b ? 'Y' : 'N') : ''}</td><td>${a ? (a.f ? 'Y' : 'N') : ''}</td></tr>`;
+      return r;
+    };
+    if (blank) {
+      H.CATS.forEach(c2 => {
+        body += `<tr class="cat"><td colspan="32">${H.esc(c2.name)}</td></tr>`;
+        c2.items.filter(it => it.k !== 'custom').forEach(it => body += row(H.esc(it.n), it.w >= 1000 ? (it.w / 1000) + ' kW' : it.w + ' W', null));
+      });
+      body += `<tr class="cat"><td colspan="32">Other appliances (write the name)</td></tr>`;
+      for (let k = 0; k < 8; k++) body += row('', '', null);
+    } else {
+      state.appliances.forEach(a => body += row(H.esc(a.name) + (a.notes ? ` <small>– ${H.esc(a.notes)}</small>` : ''), '', a));
+    }
+    body += '</tbody>';
+    const sig = `<div class="psig">
+      <div><div class="ln">${!blank && c.signature ? `<img src="${c.signature}" alt="Signature">` : ''}</div><div class="cap">Customer signature</div></div>
+      <div><div class="ln">${v('declDate')}</div><div class="cap">Date</div></div>
+      <div><div class="ln">${v('declName') || v('name')}</div><div class="cap">Name</div></div></div>
+      <p class="pinst" style="margin-top:2mm">I confirm that the information in this form is correct to the best of my knowledge, and I agree that Regen may use it to design my solar system.</p>
+      <div class="office"><b>For Regen use:</b> Received by ____________________ &nbsp; Date __________ &nbsp; Project / ref. ____________________ &nbsp; Entered in load calculator ☐</div>`;
+    const foot = `<div class="pfoot"><b>${H.esc(H.copyright())}</b> ${H.esc(H.NOTICE)}<br>${H.esc(H.COMPANY_LINE)}</div>`;
+    $('#printArea').innerHTML = `${foot}<table class="pt"><thead><tr><td></td></tr></thead><tbody><tr><td>
+      ${head}${det}<div class="brk"></div>${head}<div class="pbox"><h2>3. Appliances and hours of use</h2></div>${inst}
+      <table class="at">${hdr}${body}</table>${sig}</td></tr></tbody><tfoot><tr><td><div class="pf-space"></div></td></tr></tfoot></table>`;
+  }
+  $('#printBlank').addEventListener('click', () => { buildPrint(true); setTimeout(() => window.print(), 50); });
+
+  renderCats(); renderList(); updateSum(); sizeCanvas();
+  if (params.get('blank') === '1') { buildPrint(true); window.addEventListener('load', () => setTimeout(() => window.print(), 300)); }
+  window.__hlcForm = { state, buildPrint, payload };   // used by automated tests
+})();
+</script>
+</body>
+</html>

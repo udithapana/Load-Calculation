@@ -1,0 +1,919 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hybrid Load Calculator</title>
+<meta name="description" content="Regen hybrid solar load calculation: 24-hour load profile, inverter capacity check and Excel load calculation sheet.">
+<meta name="theme-color" content="#10264a">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="common.css">
+<style>
+.tabs{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:var(--tb,58px);z-index:18}
+.tabs .wrap{display:flex;align-items:center;gap:4px;overflow-x:auto}
+.tab{border:0;background:transparent;padding:12px 14px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.tab.on{color:var(--navy);border-bottom-color:var(--gold)}
+.live{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);white-space:nowrap;padding-left:8px}
+.pane{padding-block:6px 30px}
+.pane[hidden]{display:none}
+.tb-acts{display:flex;gap:6px;flex-wrap:wrap}
+.proj{font-size:12.5px;opacity:.85;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.import{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--gold-soft);border:1px solid #f0d58c;border-radius:var(--radius);padding:14px;margin-top:16px}
+.import p{margin:0;flex:1;min-width:220px;font-size:14px}
+.sigimg{max-height:70px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:4px}
+
+/* appliance editor */
+.atool{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0 10px}
+.atool .sp{flex:1}
+.alist{display:flex;flex-direction:column;gap:8px}
+.ea{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+.ea.off{opacity:.6}
+.ea>summary{list-style:none;cursor:pointer;padding:10px 12px;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(120px,1.2fr) auto;gap:6px 14px;align-items:center}
+.ea>summary::-webkit-details-marker{display:none}
+.ea .nm{font-weight:700;color:var(--navy);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ea .nm small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.ea .ld{font-size:13px;color:var(--ink)}
+.ea .badges{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.ea[open]>summary{border-bottom:1px solid var(--line)}
+.ea .body{padding:14px;display:flex;flex-direction:column;gap:14px}
+.eg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px 12px;align-items:end}
+.eg .pwf{grid-column:1/-1}
+@media (min-width:700px){.eg .pwf{grid-column:span 2}}
+.ea .acts{display:flex;gap:8px;flex-wrap:wrap}
+@media (max-width:640px){.ea>summary{grid-template-columns:minmax(0,1fr) auto}.ea .strip{grid-column:1/-1}.ea .ld{text-align:right}.ea .badges{grid-column:1/-1;justify-content:flex-start}}
+.ea .badges:empty{display:none}
+
+/* analysis */
+.inv{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end}
+.inv>.fld{flex:1 1 160px}
+.inv>.fld.segf{flex:0 1 auto}
+.verdict{border-radius:var(--radius);padding:14px 16px;margin-top:14px;display:flex;gap:12px;align-items:flex-start;border:1px solid}
+.verdict.ok{background:var(--ok-soft);border-color:#b9dcc6}
+.verdict.high{background:var(--warn-soft);border-color:#f0d58c}
+.verdict.over{background:var(--bad-soft);border-color:#f2b8b8}
+.verdict .ico{width:30px;height:30px;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:900;color:#fff;font-size:16px}
+.verdict.ok .ico{background:var(--ok)}.verdict.high .ico{background:var(--warn)}.verdict.over .ico{background:var(--bad)}
+.verdict h3{font-size:16px;margin-bottom:3px}
+.verdict.ok h3{color:var(--ok)}.verdict.high h3{color:var(--warn)}.verdict.over h3{color:var(--bad)}
+.verdict p{margin:0;font-size:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+.kpi .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700}
+.kpi .v{font-size:24px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums;margin-top:2px}
+.kpi .v small{font-size:13px;font-weight:600;color:var(--muted)}
+.kpi .s{font-size:12.5px;color:var(--muted)}
+.kpi.bad .v{color:var(--bad)}.kpi.warn .v{color:var(--warn)}
+.chartcard{margin-top:12px}
+.chart-h{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.chart-h h3{font-size:15px;color:var(--navy);margin-right:auto}
+.chart{overflow-x:auto}
+.chart svg{display:block;width:100%;height:auto}
+@media (max-width:520px){.live{display:none}}
+.chart svg .hit{cursor:pointer}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12.5px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+.legend i.dash{height:0;border-top:2px dashed var(--navy);border-radius:0;width:18px;vertical-align:3px}
+.hdetail{margin-top:10px;border-top:1px solid var(--line);padding-top:10px;font-size:14px}
+.hdetail ul{margin:6px 0 0;padding-left:18px;columns:2;column-gap:28px}
+@media (max-width:640px){.hdetail ul{columns:1}}
+.recs{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:12px}
+.rec h3{font-size:15px;color:var(--navy);margin-bottom:8px;display:flex;gap:8px;align-items:center}
+.rec h3 .tag{font-size:11px;background:var(--navy);color:#fff;border-radius:4px;padding:2px 6px;letter-spacing:.4px}
+.rec p{margin:0 0 8px;font-size:14px}
+.moves{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-direction:column;gap:6px}
+.moves li{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13.5px}
+.moves li b{color:var(--navy)}
+.moves .arrow{color:var(--gold);font-weight:900;margin:0 4px}
+.big{font-size:26px;font-weight:800;color:var(--navy)}
+.notes{margin-top:12px}
+.notes .card{font-size:14px}
+.notes ul{margin:6px 0 0;padding-left:18px}
+.phases{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0}
+.ph{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.ph b{font-size:18px;color:var(--navy)}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--navy-2)}
+.bar i.high{background:var(--gold)}.bar i.over{background:var(--bad)}
+.tblwrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
+.ht th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);padding:9px 10px;border-bottom:1px solid var(--line);background:#f8f9fc;position:sticky;top:0}
+.ht td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;font-variant-numeric:tabular-nums}
+.ht tr.over td{background:#fff5f5}.ht tr.high td{background:#fffbef}
+.ht tr.sel td{outline:2px solid var(--gold);outline-offset:-2px}
+.ht td.on{font-size:12.5px;color:var(--muted);min-width:260px}
+.ht .lb{display:flex;align-items:center;gap:8px;min-width:120px}
+.ht .lb .bar{flex:1;margin:0}
+.addm .search{margin-bottom:10px}
+.addm .grp{margin-bottom:10px}
+.addm .grp h4{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.addm .its{display:flex;flex-wrap:wrap;gap:6px}
+.plist{display:flex;flex-direction:column;gap:6px}
+.plist .pi{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.plist .pi div{flex:1;min-width:0}
+.plist .pi b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cust-sum{font-size:13.5px;color:var(--muted);margin-top:4px}
+</style>
+</head>
+<body>
+<header class="topbar" id="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="31" fill="#e0a526"/><circle cx="32" cy="32" r="12" fill="#10264a"/><g stroke="#10264a" stroke-width="4" stroke-linecap="round"><path d="M32 8v8M32 48v8M8 32h8M48 32h8M15 15l6 6M43 43l6 6M15 49l6-6M43 21l6-6"/></g></svg>
+      <div class="brand-txt"><b>Hybrid Load Calculator</b><span class="proj" id="projName">New project</span></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="tb-acts">
+      <button class="btn sm" type="button" id="bOpen">Open file</button>
+      <button class="btn sm" type="button" id="bProjects">Projects</button>
+      <button class="btn sm" type="button" id="bSave">Save file</button>
+      <button class="btn sm gold" type="button" id="bExcel">Excel sheet</button>
+    </div>
+  </div>
+</header>
+<nav class="tabs" aria-label="Sections">
+  <div class="wrap">
+    <button class="tab" type="button" data-tab="cust">Customer</button>
+    <button class="tab" type="button" data-tab="apps">Appliances</button>
+    <button class="tab" type="button" data-tab="ana">Load analysis</button>
+    <div class="live" id="live"></div>
+  </div>
+</nav>
+<input type="file" id="fileIn" accept=".json,application/json,text/plain,*/*" hidden>
+
+<main class="wrap">
+  <!-- CUSTOMER -->
+  <section class="pane" id="p-cust" hidden>
+    <div class="import">
+      <p><b>Received a customer form?</b> Open the form file the customer sent (WhatsApp or email) to load their details and appliances. For paper forms, type the details here and add the appliances in the next tab.</p>
+      <button class="btn primary" type="button" id="bImport">Open customer form file</button>
+      <button class="btn" type="button" id="bLink">Send form link to a customer</button>
+      <a class="btn" id="bBlank" href="form.html?blank=1" target="_blank" rel="noopener">Print blank paper form</a>
+    </div>
+    <div class="sec-h"><h2>Customer</h2><p id="formInfo"></p></div>
+    <div class="card grid">
+      <div class="fld"><label for="c_name">Customer name</label><input id="c_name" type="text" data-c="name"></div>
+      <div class="fld"><label for="c_phone">Mobile number</label><input id="c_phone" type="tel" data-c="phone"></div>
+      <div class="fld"><label for="c_email">Email</label><input id="c_email" type="email" data-c="email"></div>
+      <div class="fld span2"><label for="c_address">Installation address</label><textarea id="c_address" data-c="address"></textarea></div>
+    </div>
+    <div class="sec-h"><h2>Electricity connection</h2></div>
+    <div class="card grid">
+      <div class="fld"><label for="c_utility">Supplier</label><select id="c_utility" data-c="utility"><option>CEB</option><option>LECO</option></select></div>
+      <div class="fld"><label for="c_account">Account number</label><input id="c_account" type="text" data-c="account"></div>
+      <div class="fld"><label for="c_billName">Name on the bill</label><input id="c_billName" type="text" data-c="billName"></div>
+      <div class="fld"><label for="c_supply">Supply type</label><select id="c_supply" data-c="supply"><option value="">—</option><option>Single-phase</option><option>Three-phase</option><option>Not sure</option></select></div>
+      <div class="fld"><label for="c_capacity">Connection capacity</label><select id="c_capacity" data-c="capacity"><option value="">—</option><option>15 A</option><option>30 A</option><option>60 A</option><option>Other</option><option>Not sure</option></select></div>
+      <div class="fld"><label for="c_tariff">Tariff</label><select id="c_tariff" data-c="tariff"><option>Domestic</option><option>Religious &amp; charitable</option><option>General purpose</option><option>Industrial</option><option>Other</option></select></div>
+      <div class="fld"><label for="c_units">Avg. monthly units (kWh)</label><input id="c_units" type="number" data-c="units"></div>
+      <div class="fld"><label for="c_bill">Avg. monthly bill (Rs.)</label><input id="c_bill" type="number" data-c="bill"></div>
+      <div class="fld"><label for="c_solar">Existing solar</label><select id="c_solar" data-c="solar"><option>No</option><option>Yes</option></select></div>
+      <div class="fld"><label for="c_solarKw">Existing solar (kW)</label><input id="c_solarKw" type="number" data-c="solarKw"></div>
+      <div class="fld"><label for="c_solarScheme">Solar scheme</label><select id="c_solarScheme" data-c="solarScheme"><option value="">—</option><option>Net metering</option><option>Net accounting</option><option>Net plus</option><option>Not sure</option></select></div>
+      <div class="fld"><label for="c_outages">Power cuts</label><select id="c_outages" data-c="outages"><option value="">—</option><option>Rarely</option><option>A few times a month</option><option>Every week</option><option>Every day</option></select></div>
+      <div class="fld"><label for="c_backupHrs">Backup needed (hours)</label><input id="c_backupHrs" type="number" data-c="backupHrs"></div>
+      <div class="fld span2"><label for="c_notes">Customer notes</label><textarea id="c_notes" data-c="notes"></textarea></div>
+      <div class="fld span2" id="sigBox" hidden><span class="lbl">Customer signature</span><div><img class="sigimg" id="sigImg" alt="Customer signature"></div><span class="hint" id="sigInfo"></span></div>
+    </div>
+    <div class="sec-h"><h2>Prepared by</h2></div>
+    <div class="card grid">
+      <div class="fld"><label for="p_by">Design engineer</label><input id="p_by" type="text" data-p="by"></div>
+      <div class="fld"><label for="p_ref">Project / reference no.</label><input id="p_ref" type="text" data-p="ref"></div>
+      <div class="fld"><label for="p_date">Date</label><input id="p_date" type="date" data-p="date"></div>
+    </div>
+  </section>
+
+  <!-- APPLIANCES -->
+  <section class="pane" id="p-apps" hidden>
+    <div class="atool">
+      <button class="btn primary" type="button" id="bAdd">+ Add appliance</button>
+      <button class="btn sm" type="button" id="bExpand">Expand all</button>
+      <span class="sp"></span>
+      <span class="muted small" id="appCount"></span>
+    </div>
+    <p class="muted small" style="margin:0 0 10px">The peak check uses the full rating of every unit “used at the same time” for each hour it is on. Duty factor and hours per day are used for daily energy only. Tap an appliance to edit it.</p>
+    <div class="alist" id="alist"></div>
+  </section>
+
+  <!-- ANALYSIS -->
+  <section class="pane" id="p-ana" hidden>
+    <div class="sec-h"><h2>Inverter</h2><p>Selected hybrid inverter and check settings</p></div>
+    <div class="card">
+      <div class="inv">
+        <div class="fld segf"><span class="lbl">Inverter output</span><div class="seg" id="iPhase"><button type="button" data-v="1">Single-phase</button><button type="button" data-v="3">Three-phase</button></div></div>
+        <div class="fld"><label for="iKw">Rated output power (kW)</label><select id="iKw"></select></div>
+        <div class="fld" id="iCustomWrap" hidden><label for="iCustom">Custom rating (kW)</label><input id="iCustom" type="number" min="0.5" step="0.1"></div>
+        <div class="fld"><label for="iSurge">Surge capability (× rated, ~10 s)</label><input id="iSurge" type="number" min="1" step="0.1"></div>
+        <div class="fld"><label for="iWarn">High-loading warning (%)</label><input id="iWarn" type="number" min="50" max="100" step="5"></div>
+        <div class="fld"><label for="iMargin">Sizing margin (%)</label><input id="iMargin" type="number" min="0" max="100" step="5"></div>
+        <div class="fld" id="iPhWrap" hidden><label for="iPhKw">Max output per phase (kW)</label><input id="iPhKw" type="number" min="0" step="0.1" placeholder="rated ÷ 3"></div>
+        <div class="fld segf"><span class="lbl">Loads to check</span><div class="seg" id="iScope"><button type="button" data-v="all">All appliances</button><button type="button" data-v="backup">Power-cut loads only</button></div></div>
+      </div>
+      <details style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Standard inverter sizes used for recommendations</summary>
+        <div class="grid" style="margin-top:10px">
+          <div class="fld"><label for="sz1">Single-phase sizes (kW)</label><input id="sz1" type="text"></div>
+          <div class="fld"><label for="sz3">Three-phase sizes (kW)</label><input id="sz3" type="text"></div>
+        </div>
+        <p class="hint">Comma-separated. Above the largest size, the app suggests identical units in parallel.</p>
+      </details>
+    </div>
+    <div id="anaOut"></div>
+  </section>
+
+  <footer class="legal">
+    <b id="lgCopy"></b><br><span id="lgNotice"></span><br><span id="lgCo"></span>
+  </footer>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="common.js"></script>
+<script src="xlsx-writer.js"></script>
+<script>
+(() => {
+  const H = HLC, $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+  const esc = H.esc;
+  $('#lgCopy').textContent = H.copyright(); $('#lgNotice').textContent = H.NOTICE; $('#lgCo').textContent = H.COMPANY_LINE;
+
+  // ---------- project state ----------
+  function newProject() {
+    return { type: H.PROJECT_TYPE, v: H.VERSION, id: H.uid(), created: new Date().toISOString(), updated: new Date().toISOString(),
+      customer: H.emptyCustomer(), appliances: [], inv: H.defaultInverter(), sizes: { 1: H.SIZES[1].slice(), 3: H.SIZES[3].slice() },
+      prep: { by: H.store.get('engineer', ''), ref: '', date: H.today() }, formSubmitted: '' };
+  }
+  function normProject(p) {
+    const n = newProject();
+    p = Object.assign(n, p || {});
+    p.type = H.PROJECT_TYPE;
+    p.customer = Object.assign(H.emptyCustomer(), p.customer || {});
+    p.appliances = (p.appliances || []).map(H.normalise);
+    p.inv = Object.assign(H.defaultInverter(), p.inv || {});
+    p.inv.phase = +p.inv.phase === 3 ? 3 : 1; p.inv.kw = Math.max(0.1, H.num(p.inv.kw, 5));
+    p.inv.surge = Math.max(1, H.num(p.inv.surge, 2)); p.inv.warn = Math.min(100, Math.max(10, H.num(p.inv.warn, 80))); p.inv.margin = Math.max(0, H.num(p.inv.margin, 10));
+    p.sizes = { 1: (p.sizes && p.sizes[1]) || H.SIZES[1].slice(), 3: (p.sizes && p.sizes[3]) || H.SIZES[3].slice() };
+    p.prep = Object.assign({ by: '', ref: '', date: H.today() }, p.prep || {});
+    return p;
+  }
+  let P = null, undoApps = null, selHour = null, view = 'cust', chartMode = 'now';
+  const openSet = new Set();
+
+  function loadCurrent() {
+    const id = H.store.get('current');
+    const p = id && H.store.get('p_' + id);
+    P = normProject(p || newProject());
+  }
+  let saveT;
+  function persist() {
+    clearTimeout(saveT);
+    saveT = setTimeout(() => {
+      P.updated = new Date().toISOString();
+      H.store.set('p_' + P.id, P); H.store.set('current', P.id);
+      const idx = (H.store.get('projects', []) || []).filter(x => x.id !== P.id);
+      idx.unshift({ id: P.id, name: P.customer.name || 'Untitled project', ref: P.prep.ref, updated: P.updated, n: P.appliances.length });
+      H.store.set('projects', idx.slice(0, 200));
+    }, 300);
+  }
+  const changed = (opts = {}) => { persist(); updateLive(); if (opts.ana !== false && view === 'ana') renderAnalysis(); };
+  const toast = (m, act) => {
+    const t = $('#toast'); t.innerHTML = esc(m) + (act ? ` <button class="btn sm gold" style="margin-left:8px" id="toastAct">${esc(act.label)}</button>` : '');
+    t.classList.add('show'); t.style.pointerEvents = act ? 'auto' : 'none';
+    if (act) $('#toastAct').onclick = () => { act.fn(); t.classList.remove('show'); };
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), act ? 7000 : 2800);
+  };
+  function modal(html, cls = '') {
+    const bg = document.createElement('div'); bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal ${cls}" role="dialog" aria-modal="true">${html}</div>`;
+    bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('[data-close]')) bg.remove(); });
+    document.body.appendChild(bg); return bg;
+  }
+
+  // ---------- tabs ----------
+  function show(tab) {
+    view = tab;
+    $$('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+    $('#p-cust').hidden = tab !== 'cust'; $('#p-apps').hidden = tab !== 'apps'; $('#p-ana').hidden = tab !== 'ana';
+    if (tab === 'cust') renderCustomer();
+    if (tab === 'apps') renderApps();
+    if (tab === 'ana') { renderInverter(); renderAnalysis(); }
+    H.store.set('tab', tab);
+  }
+  $$('.tab').forEach(b => b.addEventListener('click', () => { show(b.dataset.tab); window.scrollTo({ top: 0 }); }));
+  const sizeTop = () => document.documentElement.style.setProperty('--tb', $('#topbar').offsetHeight + 'px');
+  window.addEventListener('resize', sizeTop);
+
+  function updateLive() {
+    $('#projName').textContent = (P.customer.name || 'New project') + (P.prep.ref ? ' · ' + P.prep.ref : '');
+    if (!P.appliances.length) { $('#live').innerHTML = ''; return; }
+    const r = H.analyse(P.appliances, P.inv);
+    const cls = r.over.length ? 'over' : r.high.length ? 'high' : 'ok';
+    $('#live').innerHTML = `<span class="tnum">Peak <b>${H.fmtKW(r.peak)}</b> / ${P.inv.kw} kW</span><span class="pill ${cls}">${r.over.length ? r.over.length + ' h over' : r.high.length ? 'High' : 'OK'}</span>`;
+  }
+
+  // ---------- customer tab ----------
+  function renderCustomer() {
+    $$('[data-c]').forEach(el => el.value = P.customer[el.dataset.c] ?? '');
+    $$('[data-p]').forEach(el => el.value = P.prep[el.dataset.p] ?? '');
+    const sig = P.customer.signature;
+    $('#sigBox').hidden = !sig;
+    if (sig) { $('#sigImg').src = sig; $('#sigInfo').textContent = [P.customer.declName, P.customer.declDate].filter(Boolean).join(' · '); }
+    $('#formInfo').textContent = P.formSubmitted ? `Form received ${new Date(P.formSubmitted).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : '';
+  }
+  $$('[data-c]').forEach(el => el.addEventListener('input', () => { P.customer[el.dataset.c] = el.value; changed({ ana: false }); }));
+  $$('[data-p]').forEach(el => el.addEventListener('input', () => { P.prep[el.dataset.p] = el.value; if (el.dataset.p === 'by') H.store.set('engineer', el.value); changed({ ana: false }); }));
+  $('#bLink').addEventListener('click', async () => {
+    const url = new URL('form.html', location.href).href;
+    const text = `Regen – please fill in this form with your household appliances and the hours you use them, so we can size your hybrid solar system: ${url}`;
+    try { if (navigator.share) { await navigator.share({ title: 'Regen Home Energy Use Form', text, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
+    try { await navigator.clipboard.writeText(text); toast('Form link copied — paste it into WhatsApp or email'); }
+    catch (e) { modal(`<h3>Customer form link</h3><input type="text" readonly value="${esc(url)}" onclick="this.select()"><div class="acts"><button class="btn primary" data-close>Done</button></div>`); }
+  });
+
+  // ---------- appliances tab ----------
+  const pwVal = a => a.unit === 'kW' ? +(a.w / 1000).toFixed(3) : +a.w.toFixed(1);
+  const stripHTML = hrs => `<div class="strip" title="${esc(H.slotsText(hrs))}">${hrs.map((on, h) => `<i class="${on ? 'on' : ''}${h < 6 || h >= 18 ? ' n' : ''}"></i>`).join('')}</div>`;
+  function sumHTML(a) {
+    const scoped = H.inScope(a, P.inv);
+    const kw = H.runW(a) / 1000;
+    return `<div class="nm">${esc(a.name || 'Unnamed appliance')}<small>${esc(H.CAT_NAME[a.cat] || '')} · ${esc(H.slotsText(a.hrs) || 'no hours set')}</small></div>
+      <div class="ld tnum">${a.qtyOn}${a.qtyOn !== a.qty ? ` of ${a.qty}` : ''} × ${a.w >= 1000 ? (a.w / 1000) + ' kW' : a.w + ' W'} = <b>${kw.toFixed(2)} kW</b></div>
+      ${stripHTML(a.hrs)}
+      <div class="badges">${a.b ? '<span class="pill info">Power cut</span>' : ''}${a.f ? '<span class="pill gold">Flexible</span>' : ''}${+P.inv.phase === 3 ? `<span class="pill info">${a.ph || 'L1'}</span>` : ''}${!scoped ? '<span class="pill high">Not checked</span>' : ''}</div>`;
+  }
+  const yn = (k, v, labels = ['Yes', 'No']) => `<div class="seg" data-yn="${k}"><button type="button" data-v="1" class="${v ? 'on' : ''}">${labels[0]}</button><button type="button" data-v="0" class="${!v ? 'on' : ''}">${labels[1]}</button></div>`;
+  function bodyHTML(a) {
+    const opt = (list, cur) => list.map(([v, l]) => `<option value="${esc(v)}"${String(cur) === String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('');
+    return `<div class="eg">
+        <div class="fld" style="grid-column:span 2"><label for="n_${a.id}">Appliance</label><input id="n_${a.id}" type="text" data-f="name" value="${esc(a.name)}"></div>
+        <div class="fld"><label for="c_${a.id}">Group</label><select id="c_${a.id}" data-f="cat">${opt(H.CATS.map(c => [c.id, c.name]), a.cat)}</select></div>
+        <div class="fld"><label for="t_${a.id}">Load type</label><select id="t_${a.id}" data-f="t">${opt(Object.entries(H.TYPES).map(([k, v]) => [k, v.label]), a.t)}</select></div>
+      </div>
+      <div class="eg">
+        <div class="fld"><label for="q_${a.id}">Quantity</label><input id="q_${a.id}" type="number" min="0" data-f="qty" value="${a.qty}"></div>
+        <div class="fld"><label for="o_${a.id}">Used at same time</label><input id="o_${a.id}" type="number" min="0" data-f="qtyOn" value="${a.qtyOn}"></div>
+        <div class="fld pwf"><label for="w_${a.id}">Rating each</label><div class="pw"><input id="w_${a.id}" type="number" min="0" step="any" data-f="w" value="${pwVal(a)}"><div class="seg" data-unit><button type="button" data-v="W" class="${a.unit === 'W' ? 'on' : ''}">W</button><button type="button" data-v="kW" class="${a.unit === 'kW' ? 'on' : ''}">kW</button></div></div></div>
+        <div class="fld"><label for="s_${a.id}">Starting surge (×)</label><input id="s_${a.id}" type="number" min="1" step="0.1" data-f="s" value="${a.s}"></div>
+        <div class="fld"><label for="d_${a.id}">Duty factor (%)</label><input id="d_${a.id}" type="number" min="5" max="100" step="5" data-f="d" value="${Math.round(a.d * 100)}"></div>
+        <div class="fld"><label for="h_${a.id}">Hours per day</label><input id="h_${a.id}" type="number" min="0" max="24" step="0.5" data-f="hpd" value="${a.hpd}"></div>
+        <div class="fld"><label for="u_${a.id}">How often</label><select id="u_${a.id}" data-f="use">${opt(Object.entries(H.USE_LABEL), a.use)}</select></div>
+        ${+P.inv.phase === 3 ? `<div class="fld"><label for="ph_${a.id}">Phase</label><select id="ph_${a.id}" data-f="ph">${opt([['L1', 'L1'], ['L2', 'L2'], ['L3', 'L3'], ['3P', 'Three-phase']], a.ph || 'L1')}</select></div>` : ''}
+      </div>
+      <div class="fld"><span class="lbl">Hours of use</span>${H.hourPickerHTML(a.hrs)}</div>
+      <div class="eg">
+        <div class="fld"><span class="lbl">Needed in power cuts</span>${yn('b', a.b)}</div>
+        <div class="fld"><span class="lbl">Time can be changed</span>${yn('f', a.f)}</div>
+        <div class="fld"><span class="lbl">Include in check</span>${yn('inc', a.inc)}</div>
+      </div>
+      <div class="fld"><label for="x_${a.id}">Notes</label><input id="x_${a.id}" type="text" data-f="notes" value="${esc(a.notes)}"></div>
+      <div class="acts"><button class="btn sm" type="button" data-act="dup">Duplicate</button><button class="btn sm danger" type="button" data-act="del">Delete</button></div>`;
+  }
+  function renderApps() {
+    $('#appCount').textContent = P.appliances.length ? `${P.appliances.length} appliances · connected ${(P.appliances.reduce((s, a) => s + a.qty * a.w, 0) / 1000).toFixed(2)} kW` : '';
+    $('#alist').innerHTML = P.appliances.length ? P.appliances.map(a => `<details class="ea${a.inc ? '' : ' off'}" data-id="${a.id}"${openSet.has(a.id) ? ' open' : ''}><summary>${sumHTML(a)}</summary><div class="body">${openSet.has(a.id) ? bodyHTML(a) : ''}</div></details>`).join('')
+      : '<div class="card muted">No appliances yet. Open the customer\'s form file from the Customer tab, or add appliances one by one.</div>';
+  }
+  const findA = el => { const d = el.closest('.ea'); return d && P.appliances.find(a => a.id === d.dataset.id); };
+  const refreshSum = (a) => { const d = document.querySelector(`.ea[data-id="${a.id}"]`); if (d) { d.querySelector('summary').innerHTML = sumHTML(a); d.classList.toggle('off', !a.inc); } };
+  $('#alist').addEventListener('toggle', e => {
+    const d = e.target; if (!d.classList || !d.classList.contains('ea')) return;
+    const a = P.appliances.find(x => x.id === d.dataset.id); if (!a) return;
+    if (d.open) { openSet.add(a.id); if (!d.querySelector('.body').innerHTML) d.querySelector('.body').innerHTML = bodyHTML(a); }
+    else openSet.delete(a.id);
+  }, true);
+  $('#alist').addEventListener('click', e => {
+    const a = findA(e.target); if (!a || e.target.closest('summary')) return;
+    const body = e.target.closest('.body');
+    const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'del') {
+      const i = P.appliances.indexOf(a), snap = JSON.parse(JSON.stringify(a));
+      P.appliances.splice(i, 1); renderApps(); changed();
+      toast(`${a.name || 'Appliance'} deleted`, { label: 'Undo', fn: () => { P.appliances.splice(i, 0, H.normalise(snap)); renderApps(); changed(); } });
+      return;
+    }
+    if (act === 'dup') { const c = H.normalise(JSON.parse(JSON.stringify(a))); c.id = H.uid(); c.name = a.name + ' (copy)'; P.appliances.splice(P.appliances.indexOf(a) + 1, 0, c); openSet.add(c.id); renderApps(); changed(); return; }
+    const hc = e.target.closest('.hp-c');
+    if (hc) { const h = +hc.dataset.h; a.hrs[h] = a.hrs[h] ? 0 : 1; hc.classList.toggle('on', !!a.hrs[h]); hc.setAttribute('aria-pressed', a.hrs[h] ? 'true' : 'false'); syncHpd(a, body); refreshSum(a); changed(); return; }
+    const pre = e.target.closest('[data-pre]');
+    if (pre) { H.applyPreset(a.hrs, pre.dataset.pre); body.querySelectorAll('.hp-c').forEach(c => { const on = !!a.hrs[+c.dataset.h]; c.classList.toggle('on', on); c.setAttribute('aria-pressed', on); }); syncHpd(a, body); refreshSum(a); changed(); return; }
+    const u = e.target.closest('[data-unit] button');
+    if (u) { a.unit = u.dataset.v; u.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === u)); body.querySelector('[data-f="w"]').value = pwVal(a); changed(); return; }
+    const y = e.target.closest('[data-yn] button');
+    if (y) { const k = y.parentElement.dataset.yn; a[k] = y.dataset.v === '1'; y.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === y)); refreshSum(a); changed(); }
+  });
+  function syncHpd(a, body) { if (!a.hpdManual) { a.hpd = H.countHrs(a.hrs); const el = body && body.querySelector('[data-f="hpd"]'); if (el) el.value = a.hpd; } }
+  $('#alist').addEventListener('input', e => {
+    const a = findA(e.target); const f = e.target.dataset.f; if (!a || !f) return;
+    const v = e.target.value;
+    switch (f) {
+      case 'name': case 'notes': a[f] = v; break;
+      case 'w': a.w = Math.max(0, H.num(v)) * (a.unit === 'kW' ? 1000 : 1); break;
+      case 'qty': a.qty = Math.max(0, Math.round(H.num(v))); if (a.qtyOn > a.qty) a.qtyOn = a.qty; break;
+      case 'qtyOn': a.qtyOn = Math.max(0, Math.min(a.qty, Math.round(H.num(v)))); break;
+      case 's': a.s = Math.max(1, H.num(v, 1)); break;
+      case 'd': a.d = Math.min(1, Math.max(0.05, H.num(v, 100) / 100)); break;
+      case 'hpd': a.hpdManual = v !== '' && +v !== H.countHrs(a.hrs); a.hpd = Math.min(24, Math.max(0, H.num(v, H.countHrs(a.hrs)))); break;
+      default: return;
+    }
+    refreshSum(a); changed();
+  });
+  $('#alist').addEventListener('change', e => {
+    const a = findA(e.target); const f = e.target.dataset.f; if (!a || !f) return;
+    if (['cat', 't', 'use', 'ph'].includes(f)) { a[f] = e.target.value; if (f === 't') { a.s = H.TYPES[a.t].s; const s = e.target.closest('.body').querySelector('[data-f="s"]'); if (s) s.value = a.s; } refreshSum(a); changed(); }
+    if (f === 'qtyOn' || f === 'qty') { e.target.closest('.body').querySelector('[data-f="qtyOn"]').value = a.qtyOn; }
+  });
+  $('#bExpand').addEventListener('click', () => {
+    const all = P.appliances.every(a => openSet.has(a.id));
+    P.appliances.forEach(a => all ? openSet.delete(a.id) : openSet.add(a.id));
+    $('#bExpand').textContent = all ? 'Expand all' : 'Collapse all'; renderApps();
+  });
+  $('#bAdd').addEventListener('click', () => {
+    const m = modal(`<div class="addm"><h3>Add appliance</h3><input class="search" type="text" id="addQ" placeholder="Search, e.g. pump, AC, kettle">
+      <div id="addList"></div><div class="acts"><button class="btn primary" data-close>Done</button></div></div>`);
+    const draw = q => {
+      q = (q || '').toLowerCase();
+      $('#addList').innerHTML = H.CATS.map(c => {
+        const its = c.items.filter(it => !q || it.n.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+        return its.length ? `<div class="grp"><h4>${esc(c.name)}</h4><div class="its">${its.map(it => `<button type="button" class="chip" data-add="${it.k}">${esc(it.k === 'custom' ? '+ Other (custom)' : it.n)}</button>`).join('')}</div></div>` : '';
+      }).join('') || '<p class="muted">No match. Use “Other (custom)” in the Other group.</p>';
+    };
+    draw(''); m.querySelector('#addQ').addEventListener('input', e => draw(e.target.value));
+    m.addEventListener('click', e => {
+      const b = e.target.closest('[data-add]'); if (!b) return;
+      const a = H.newAppliance(b.dataset.add);
+      if (a.k === 'custom') a.name = 'Other appliance';
+      if (+P.inv.phase === 3) a.ph = 'L1';
+      P.appliances.push(a); openSet.add(a.id); renderApps(); changed();
+      toast(`${a.name} added`);
+    });
+  });
+
+  // ---------- inverter settings ----------
+  function renderInverter() {
+    const inv = P.inv;
+    $$('#iPhase button').forEach(b => b.classList.toggle('on', +b.dataset.v === +inv.phase));
+    $$('#iScope button').forEach(b => b.classList.toggle('on', b.dataset.v === inv.scope));
+    const sizes = P.sizes[inv.phase];
+    const isStd = sizes.some(s => Math.abs(s - inv.kw) < 1e-9);
+    $('#iKw').innerHTML = sizes.map(s => `<option value="${s}">${s} kW</option>`).join('') + '<option value="custom">Other size…</option>';
+    $('#iKw').value = isStd ? String(sizes.find(s => Math.abs(s - inv.kw) < 1e-9)) : 'custom';
+    $('#iCustomWrap').hidden = isStd; $('#iCustom').value = inv.kw;
+    $('#iSurge').value = inv.surge; $('#iWarn').value = inv.warn; $('#iMargin').value = inv.margin;
+    $('#iPhWrap').hidden = +inv.phase !== 3; $('#iPhKw').value = inv.phaseKw || '';
+    $('#iPhKw').placeholder = `${(inv.kw / 3).toFixed(2)} (rated ÷ 3)`;
+    $('#sz1').value = P.sizes[1].join(', '); $('#sz3').value = P.sizes[3].join(', ');
+  }
+  $('#iPhase').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    P.inv.phase = +b.dataset.v;
+    if (P.inv.phase === 3) {
+      if (!P.appliances.some(a => a.ph)) H.autoBalance(P.appliances, P.inv);
+      if (!P.sizes[3].includes(P.inv.kw)) P.inv.kw = P.sizes[3].find(s => s >= P.inv.kw) || P.inv.kw;
+    }
+    renderInverter(); changed();
+  });
+  $('#iScope').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; P.inv.scope = b.dataset.v; renderInverter(); changed(); });
+  $('#iKw').addEventListener('change', e => { if (e.target.value === 'custom') { $('#iCustomWrap').hidden = false; $('#iCustom').focus(); return; } P.inv.kw = +e.target.value; renderInverter(); changed(); });
+  $('#iCustom').addEventListener('input', e => { const v = H.num(e.target.value); if (v > 0) { P.inv.kw = v; changed(); } });
+  [['iSurge', 'surge', 1], ['iWarn', 'warn', 10], ['iMargin', 'margin', 0]].forEach(([id, k, min]) => $('#' + id).addEventListener('input', e => { const v = H.num(e.target.value, NaN); if (isFinite(v) && v >= min) { P.inv[k] = k === 'warn' ? Math.min(100, v) : v; changed(); } }));
+  $('#iPhKw').addEventListener('input', e => { P.inv.phaseKw = e.target.value === '' ? '' : Math.max(0, H.num(e.target.value)); changed(); });
+  ['sz1', 'sz3'].forEach(id => $('#' + id).addEventListener('change', e => {
+    const list = e.target.value.split(/[,\s;]+/).map(Number).filter(x => x > 0).sort((a, b) => a - b);
+    if (list.length) { P.sizes[id === 'sz1' ? 1 : 3] = [...new Set(list)]; renderInverter(); changed(); }
+  }));
+
+  // ---------- analysis ----------
+  const hourRange = list => H.slotsText(list.reduce((a, h) => { a[h] = 1; return a; }, H.emptyHrs()), '12');
+  function compute() {
+    const res = H.analyse(P.appliances, P.inv);
+    const plan = res.over.length ? H.planShift(P.appliances, P.inv) : null;
+    const rec = H.recommendInverter(res, P.inv, P.sizes[P.inv.phase]);
+    const recAfter = plan && plan.moves.length ? H.recommendInverter(plan.result, P.inv, P.sizes[P.inv.phase]) : null;
+    return { res, plan, rec, recAfter };
+  }
+  function verdict(res, inv) {
+    const pk = `${H.fmtKW(res.peak)} kW at ${H.ampm(res.peakHour)}`;
+    const pct = Math.round(res.peak / res.rated * 100);
+    if (res.over.length) return { cls: 'over', ico: '!', h: `Overload in ${res.over.length} hour${res.over.length > 1 ? 's' : ''}: ${hourRange(res.over)}`,
+      p: `The customer's appliances need up to ${pk}, which is ${pct}% of the ${inv.kw} kW inverter rating${res.three ? ' (including per-phase limits)' : ''}. They cannot all run together at these times. See the options below.` };
+    if (res.high.length) return { cls: 'high', ico: '!', h: `Within rating, but above ${inv.warn}% for ${res.high.length} hour${res.high.length > 1 ? 's' : ''}`,
+      p: `Peak ${pk} (${pct}% of ${inv.kw} kW) during ${hourRange(res.high)}. There is little spare capacity for an extra appliance at those times.` };
+    return { cls: 'ok', ico: '✓', h: `The ${inv.kw} kW inverter can supply this load profile`,
+      p: res.peak ? `Peak ${pk}, ${pct}% of the rating. Every hour stays below the ${inv.warn}% warning level.` : 'No appliance hours entered yet.' };
+  }
+  function renderAnalysis() {
+    const out = $('#anaOut');
+    if (!P.appliances.length) { out.innerHTML = '<div class="card muted" style="margin-top:14px">Add appliances (or open a customer form file) to see the 24-hour load profile.</div>'; return; }
+    const { res, plan, rec, recAfter } = compute();
+    const inv = P.inv;
+    const v = verdict(res, inv);
+    const showAdj = chartMode === 'adj' && plan && plan.moves.length;
+    const cres = showAdj ? plan.result : res;
+    const kpis = `<div class="kpis">
+      <div class="kpi ${res.over.length ? 'bad' : res.high.length ? 'warn' : ''}"><div class="k">Peak simultaneous load</div><div class="v">${H.fmtKW(res.peak)} <small>kW</small></div><div class="s">at ${H.ampm(res.peakHour)} – ${H.ampm(res.peakHour + 1)}</div></div>
+      <div class="kpi ${res.over.length ? 'bad' : res.high.length ? 'warn' : ''}"><div class="k">Inverter loading at peak</div><div class="v">${Math.round(res.peak / res.rated * 100)}<small>%</small></div><div class="s">of ${inv.kw} kW ${+inv.phase === 3 ? 'three' : 'single'}-phase</div></div>
+      <div class="kpi ${res.over.length ? 'bad' : ''}"><div class="k">Hours over rating</div><div class="v">${res.over.length}<small> h</small></div><div class="s">${res.high.length} h above ${inv.warn}%</div></div>
+      <div class="kpi"><div class="k">Daily energy</div><div class="v">${res.energy.toFixed(1)} <small>kWh</small></div><div class="s">${res.eDay.toFixed(1)} day · ${res.eNight.toFixed(1)} night (6 PM–6 AM)</div></div>
+      <div class="kpi"><div class="k">Connected load</div><div class="v">${(res.connected / 1000).toFixed(2)} <small>kW</small></div><div class="s">${inv.scope === 'backup' ? 'power-cut loads only' : 'all appliances'}</div></div>
+    </div>`;
+    const tog = plan && plan.moves.length ? `<div class="seg" id="cMode"><button type="button" data-v="now" class="${!showAdj ? 'on' : ''}">Customer's times</button><button type="button" data-v="adj" class="${showAdj ? 'on' : ''}">Suggested times</button></div>` : '';
+    const chart = `<div class="card chartcard"><div class="chart-h"><h3>24-hour load profile${showAdj ? ' – with suggested time changes' : ''}</h3>${tog}</div>
+      <div class="chart" id="chart">${H.chartSVG(cres, inv, H.LIGHT_PAL, { hit: true, sel: selHour, w: Math.round(Math.max(360, Math.min(900, out.clientWidth - 34))), h: out.clientWidth < 600 ? 260 : 300 })}</div>
+      <div class="legend"><span><i style="background:#1f4e8c"></i>Within rating</span><span><i style="background:#d99a00"></i>Above ${inv.warn}%</span><span><i style="background:#c62828"></i>Over rating</span><span><i class="dash"></i>Inverter rating</span><span>Tap a bar for details</span></div>
+      <div id="hdetail"></div></div>`;
+
+    // Option A
+    let optA;
+    if (!res.over.length) optA = `<p>No overloads with the customer's times, so no changes are needed.</p>`;
+    else if (plan && plan.moves.length) {
+      const g = H.groupMoves(plan.moves);
+      optA = `<p>Move these flexible appliances out of the overloaded hours:</p><ul class="moves">${g.map(x => `<li><b>${esc(x.name)}</b> (${H.fmtKW(x.p)} kW)<br>${esc(H.slotsText(x.from, '12'))}<span class="arrow">→</span>${esc(H.slotsText(x.to, '12'))}</li>`).join('')}</ul>
+        <p>${plan.resolved ? `<span class="pill ok">Removes every overload</span> New peak ${H.fmtKW(plan.result.peak)} kW (${Math.round(plan.result.peak / res.rated * 100)}%).`
+          : `<span class="pill high">Partly solves it</span> Still over in ${hourRange(plan.result.over)}. Mark more appliances as flexible or choose a larger inverter.`}</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" type="button" id="applyMoves">Apply these changes to the schedule</button></div>`;
+    } else {
+      optA = `<p>No time change found. None of the appliances running in ${hourRange(res.over)} is marked as flexible, or no other hour has enough spare capacity.</p><p class="muted small">Ask the customer which appliances they could use at another time, mark them “Time can be changed”, and check again.</p>`;
+    }
+    if (undoApps) optA += `<p class="small" style="margin-top:8px">Time changes applied. <button class="btn sm" type="button" id="undoMoves">Undo</button></p>`;
+    // Option B
+    const same = rec.pick && Math.abs(rec.pick.total - inv.kw) < 1e-9;
+    const drv = rec.driver === 'surge' ? 'motor starting surge' : rec.driver === 'phase' ? 'the most loaded phase' : 'the running peak';
+    let optB = `<div class="big tnum">${esc(rec.label)}</div><p class="small muted">Needs at least ${rec.req.toFixed(2)} kW: ${drv}${inv.margin ? ` plus ${inv.margin}% margin` : ''}.</p>`;
+    if (same) optB += `<p><span class="pill ok">Selected size matches</span> The ${inv.kw} kW inverter is the recommended size for these times of use.</p>`;
+    else if (rec.pick && rec.pick.total < inv.kw) optB += `<p>The selected ${inv.kw} kW is larger than needed. ${esc(rec.label)} would cover the customer's times with the margin.</p>`;
+    else optB += `<p>Choose a larger inverter to run the appliances at the customer's preferred times without changes.</p>`;
+    if (rec.pick && !same) optB += `<button class="btn primary sm" type="button" id="useRec" data-kw="${rec.pick.n === 1 ? rec.pick.size : rec.pick.total}">Check with ${esc(rec.pick.n === 1 ? rec.pick.size + ' kW' : rec.pick.total + ' kW')}</button>`;
+    if (recAfter && recAfter.pick && rec.pick && recAfter.pick.total < rec.pick.total) optB += `<p class="small" style="margin-top:8px">With the time changes in option A, <b>${esc(recAfter.label)}</b> is enough.</p>`;
+
+    const recs = `<div class="recs"><div class="card rec"><h3><span class="tag">A</span>Change times of use</h3>${optA}</div><div class="card rec"><h3><span class="tag">B</span>Inverter size</h3>${optB}</div></div>`;
+
+    // notes: surge, phases, energy
+    let notes = '';
+    const sN = res.surge.map(h => res.hours[h]).sort((a, b) => b.surgePeak - a.surgePeak).slice(0, 4);
+    if (sN.length) notes += `<div class="card" style="margin-top:12px"><b>Starting surge</b><ul>${sN.map(st => `<li>${H.ampm(st.h)}: starting the ${esc(st.extraName)} while ${H.fmtKW(st.total)} kW is running needs about ${H.fmtKW(st.surgePeak)} kW for a few seconds. Surge capability is ${(inv.kw * inv.surge).toFixed(1)} kW (${inv.surge} × ${inv.kw} kW).</li>`).join('')}</ul></div>`;
+    if (res.three) {
+      const ph = res.peakPh, pl = res.pl;
+      notes += `<div class="card" style="margin-top:12px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="margin-right:auto">Phase loading (limit ${H.fmtKW(pl)} kW per phase)</b><button class="btn sm" type="button" id="balance">Auto-balance phases</button></div>
+        <div class="phases">${['L1', 'L2', 'L3'].map(k => { const r = ph[k] / pl, c = r > 1 ? 'over' : r > inv.warn / 100 ? 'high' : ''; return `<div class="ph"><span class="lbl">${k} peak</span><br><b class="tnum">${H.fmtKW(ph[k])}</b> kW <span class="muted small">${Math.round(r * 100)}%</span><div class="bar"><i class="${c}" style="width:${Math.min(100, r * 100)}%"></i></div></div>`; }).join('')}</div>
+        <p class="small muted" style="margin:0">Set each appliance's phase in the Appliances tab to match the house wiring.</p></div>`;
+    }
+    const tbl = `<div class="tblwrap"><table class="ht"><thead><tr><th>Time</th><th>Load (kW)</th><th>Loading</th>${res.three ? '<th>L1</th><th>L2</th><th>L3</th>' : ''}<th>Status</th><th>Appliances operating</th></tr></thead><tbody>${cres.hours.map(st => {
+      const pct = st.total / cres.rated; const c = st.status;
+      return `<tr class="${c}${selHour === st.h ? ' sel' : ''}" data-h="${st.h}"><td>${H.hh(st.h)}–${H.hh(st.h + 1)}</td><td><b>${H.fmtKW(st.total)}</b></td>
+        <td><div class="lb"><span>${Math.round(pct * 100)}%</span><div class="bar"><i class="${c === 'ok' ? '' : c}" style="width:${Math.min(100, pct * 100)}%"></i></div></div></td>
+        ${res.three ? ['L1', 'L2', 'L3'].map(k => `<td>${H.fmtKW(st.ph[k])}</td>`).join('') : ''}
+        <td><span class="pill ${c}">${c === 'over' ? 'OVERLOAD' : c === 'high' ? 'HIGH' : 'OK'}</span>${st.surgeOver ? ' <span class="pill high" title="Starting surge">Surge</span>' : ''}</td>
+        <td class="on">${st.on.map(o => `${esc(o.name)}${o.n > 1 ? ' ×' + o.n : ''} (${o.p >= 1000 ? (o.p / 1000).toFixed(2) + ' kW' : Math.round(o.p) + ' W'})`).join(', ') || '—'}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+
+    out.innerHTML = `<div class="verdict ${v.cls}"><div class="ico">${v.ico}</div><div><h3>${esc(v.h)}</h3><p>${esc(v.p)}</p></div></div>${kpis}${chart}${recs}${notes}
+      <div class="sec-h"><h2>Hour by hour</h2><p>${showAdj ? 'With suggested time changes' : "Customer's times of use"}</p></div>${tbl}`;
+    if (selHour != null) renderHourDetail(cres);
+
+    $('#cMode')?.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; chartMode = b.dataset.v; renderAnalysis(); });
+    $('#chart').addEventListener('click', e => { const r = e.target.closest('[data-h]'); if (!r) return; selHour = +r.dataset.h; renderAnalysis(); });
+    out.querySelector('.ht tbody').addEventListener('click', e => { const r = e.target.closest('tr'); if (!r) return; selHour = +r.dataset.h; renderAnalysis(); document.getElementById('chart').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+    $('#applyMoves')?.addEventListener('click', () => {
+      undoApps = JSON.parse(JSON.stringify(P.appliances));
+      const byId = new Map(plan.apps.map(a => [a.id, a]));
+      P.appliances.forEach(a => { const n = byId.get(a.id); if (n) a.hrs = n.hrs.slice(); });
+      chartMode = 'now'; changed(); toast('Time changes applied to the schedule');
+    });
+    $('#undoMoves')?.addEventListener('click', () => { P.appliances = undoApps.map(H.normalise); undoApps = null; changed(); toast('Schedule restored'); });
+    $('#useRec')?.addEventListener('click', e => { P.inv.kw = +e.target.dataset.kw; renderInverter(); changed(); toast(`Now checking with ${P.inv.kw} kW`); });
+    $('#balance')?.addEventListener('click', () => { H.autoBalance(P.appliances, P.inv); changed(); toast('Phases balanced'); });
+  }
+  function renderHourDetail(cres) {
+    const st = cres.hours[selHour]; if (!st) return;
+    const over = st.total - cres.rated;
+    $('#hdetail').innerHTML = `<div class="hdetail"><b>${H.ampm(st.h)} – ${H.ampm(st.h + 1)}</b> · ${H.fmtKW(st.total)} kW (${Math.round(st.total / cres.rated * 100)}%) ${over > 0 ? `<span class="pill over">over by ${H.fmtKW(over)} kW</span>` : ''}
+      <ul>${st.on.map(o => `<li>${esc(o.name)}${o.n > 1 ? ' ×' + o.n : ''} – ${o.p >= 1000 ? (o.p / 1000).toFixed(2) + ' kW' : Math.round(o.p) + ' W'}</li>`).join('') || '<li>Nothing running</li>'}</ul></div>`;
+  }
+
+  // ---------- files ----------
+  let importMode = 'any';
+  $('#bOpen').addEventListener('click', () => { importMode = 'any'; $('#fileIn').value = ''; $('#fileIn').click(); });
+  $('#bImport').addEventListener('click', () => { importMode = 'form'; $('#fileIn').value = ''; $('#fileIn').click(); });
+  $('#fileIn').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { openData(H.parseFileText(await f.text())); }
+    catch (err) { modal(`<h3>Could not open the file</h3><p>${esc(err.message)} Choose the .json file from the customer form or a saved project.</p><div class="acts"><button class="btn primary" data-close>OK</button></div>`); }
+  });
+  function openData(d) {
+    if (d && d.type === H.FORM_TYPE) {
+      const fresh = !P.appliances.length && !P.customer.name;
+      const apply = () => {
+        const p = newProject();
+        p.customer = Object.assign(H.emptyCustomer(), d.customer || {});
+        p.appliances = (d.appliances || []).map(H.normalise);
+        p.formSubmitted = d.submitted || '';
+        if (/three/i.test(p.customer.supply || '')) { p.inv.phase = 3; p.inv.kw = 10; H.autoBalance(p.appliances, p.inv); }
+        P = normProject(p); undoApps = null; selHour = null; chartMode = 'now'; openSet.clear();
+        persist(); updateLive(); show('ana');
+        toast(`Loaded ${P.appliances.length} appliances for ${P.customer.name || 'customer'}`);
+      };
+      if (fresh) apply();
+      else {
+        const m = modal(`<h3>Open as a new project?</h3><p>This form is from <b>${esc(d.customer?.name || 'a customer')}</b>. It opens as a new project; the current project stays in Projects.</p><div class="acts"><button class="btn" data-close>Cancel</button><button class="btn primary" id="go">Open form</button></div>`);
+        m.querySelector('#go').onclick = () => { m.remove(); apply(); };
+      }
+      return;
+    }
+    if (d && d.type === H.PROJECT_TYPE) {
+      P = normProject(d); undoApps = null; selHour = null; openSet.clear(); persist(); updateLive(); show('ana'); toast('Project opened'); return;
+    }
+    throw new Error('This file is not a Regen load form or project file.');
+  }
+  $('#bSave').addEventListener('click', async () => {
+    persist();
+    const name = `Regen_LoadProject_${H.safeName(P.customer.name)}_${H.today()}.json`;
+    const r = await H.shareFile(name, JSON.stringify(P), 'application/json', 'Load calculation project', name);
+    if (r === 'downloaded') toast('Project file saved to Downloads');
+  });
+  $('#bProjects').addEventListener('click', () => {
+    const list = (H.store.get('projects', []) || []);
+    const m = modal(`<h3>Projects on this device</h3><div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn primary sm" id="pNew">+ New project</button></div>
+      <div class="plist">${list.map(x => `<div class="pi" data-id="${x.id}"><div><b>${esc(x.name)}</b><span class="small muted">${esc(x.ref || '')} ${x.n || 0} appliances · ${new Date(x.updated).toLocaleDateString()}</span></div>
+        ${x.id === P.id ? '<span class="pill info">Open</span>' : '<button class="btn sm" data-o>Open</button>'}<button class="btn sm danger" data-d aria-label="Delete">Delete</button></div>`).join('') || '<p class="muted">No saved projects yet.</p>'}</div>
+      <p class="hint">Projects are stored in this browser only. Use “Save file” to keep a copy or share it with the team.</p><div class="acts"><button class="btn" data-close>Close</button></div>`);
+    m.addEventListener('click', e => {
+      if (e.target.id === 'pNew') { P = newProject(); persist(); undoApps = null; openSet.clear(); m.remove(); updateLive(); show('cust'); toast('New project started'); return; }
+      const row = e.target.closest('.pi'); if (!row) return;
+      const id = row.dataset.id;
+      if (e.target.closest('[data-o]')) { const p = H.store.get('p_' + id); if (p) { P = normProject(p); undoApps = null; openSet.clear(); persist(); m.remove(); updateLive(); show('ana'); } return; }
+      const del = e.target.closest('[data-d]');
+      if (del) {
+        if (del.dataset.confirm !== '1') { del.dataset.confirm = '1'; del.textContent = 'Confirm delete'; return; }
+        H.store.del('p_' + id);
+        H.store.set('projects', (H.store.get('projects', []) || []).filter(x => x.id !== id));
+        row.remove();
+        if (id === P.id) { P = newProject(); persist(); updateLive(); show('cust'); }
+      }
+    });
+  });
+
+  // ---------- Excel export ----------
+  $('#bExcel').addEventListener('click', async () => {
+    if (!P.appliances.length) { toast('Add appliances first'); return; }
+    try {
+      const bytes = await buildWorkbook(P);
+      const name = `Regen_LoadCalc_${H.safeName(P.customer.name)}_${H.today()}.xlsx`;
+      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const isPhone = matchMedia('(pointer:coarse)').matches;
+      const r = isPhone ? await H.shareFile(name, blob, blob.type, 'Load calculation sheet', name) : (H.download(name, blob), 'downloaded');
+      if (r === 'downloaded') toast('Excel load calculation sheet downloaded');
+    } catch (err) { console.error(err); toast('Could not create the Excel file: ' + err.message); }
+  });
+
+  async function buildWorkbook(P) {
+    const inv = P.inv, c = P.customer, three = +inv.phase === 3;
+    const res = H.analyse(P.appliances, inv);
+    const plan = res.over.length ? H.planShift(P.appliances, inv) : null;
+    const rec = H.recommendInverter(res, inv, P.sizes[inv.phase]);
+    const recAfter = plan && plan.moves.length ? H.recommendInverter(plan.result, inv, P.sizes[inv.phase]) : null;
+    const scoped = P.appliances.filter(a => H.inScope(a, inv));
+    const wb = new XW.Workbook({ title: 'Hybrid system load calculation', creator: P.prep.by || 'Regen Renewables', company: H.COMPANY.name });
+    const NAVY = '10264A', BLUE = '1F4E8C', GOLD = 'E0A526', LINE = 'B8C2D3', MUTED = '5B6680';
+    const S = {
+      title: { font: { b: 1, sz: 15, color: 'FFFFFF' }, fill: NAVY, align: { v: 'center', indent: 1 } },
+      sub: { font: { sz: 9, color: MUTED }, align: { indent: 1 } },
+      sec: { font: { b: 1, sz: 10.5, color: NAVY }, fill: 'FFF4D6', border: { bottom: 'medium', color: GOLD } },
+      k: { font: { sz: 10, color: '33415C' }, fill: 'F1F4F9', border: { all: 'thin', color: LINE }, align: { v: 'top', indent: 1 } },
+      v: { font: { sz: 10 }, border: { all: 'thin', color: LINE }, align: { v: 'top', wrap: 1, h: 'left', indent: 1 } },
+      vn: { font: { sz: 10 }, border: { all: 'thin', color: LINE }, align: { h: 'left', indent: 1 }, numFmt: '0.00' },
+      inp: { font: { b: 1, sz: 10.5, color: '1A1A1A' }, fill: 'FFF2B3', border: { all: 'thin', color: GOLD }, align: { h: 'left', indent: 1 }, numFmt: '0.00' },
+      inpPct: { font: { b: 1, sz: 10.5 }, fill: 'FFF2B3', border: { all: 'thin', color: GOLD }, align: { h: 'left', indent: 1 }, numFmt: '0%' },
+      res: { font: { b: 1, sz: 10.5, color: NAVY }, border: { all: 'thin', color: LINE }, align: { h: 'left', indent: 1 }, numFmt: '0.00' },
+      resPct: { font: { b: 1, sz: 10.5, color: NAVY }, border: { all: 'thin', color: LINE }, align: { h: 'left', indent: 1 }, numFmt: '0%' },
+      resTxt: { font: { b: 1, sz: 10.5, color: NAVY }, border: { all: 'thin', color: LINE }, align: { h: 'left', indent: 1 } },
+      th: { font: { b: 1, sz: 9.5, color: 'FFFFFF' }, fill: NAVY, border: { all: 'thin', color: '6B7A99' }, align: { h: 'center', v: 'center', wrap: 1 } },
+      thRot: { font: { b: 1, sz: 9, color: 'FFFFFF' }, fill: BLUE, border: { all: 'thin', color: '6B7A99' }, align: { h: 'center', v: 'bottom', rot: 90, wrap: 1 } },
+      td: { font: { sz: 9.5 }, border: { all: 'thin', color: LINE }, align: { v: 'center' } },
+      tdC: { font: { sz: 9.5 }, border: { all: 'thin', color: LINE }, align: { h: 'center', v: 'center' } },
+      tdW: { font: { sz: 9.5 }, border: { all: 'thin', color: LINE }, align: { v: 'center', wrap: 1 } },
+      tdN: { font: { sz: 9.5 }, border: { all: 'thin', color: LINE }, numFmt: '#,##0', align: { h: 'center', v: 'center' } },
+      tdN2: { font: { sz: 9.5 }, border: { all: 'thin', color: LINE }, numFmt: '0.00', align: { h: 'center', v: 'center' } },
+      tdP: { font: { sz: 9.5 }, border: { all: 'thin', color: LINE }, numFmt: '0%', align: { h: 'center', v: 'center' } },
+      tdB: { font: { b: 1, sz: 9.5 }, border: { all: 'thin', color: LINE }, numFmt: '0.00', align: { h: 'center', v: 'center' } },
+      tot: { font: { b: 1, sz: 9.5, color: NAVY }, fill: 'E8EDF5', border: { all: 'thin', color: LINE }, numFmt: '#,##0', align: { h: 'center', v: 'center' } },
+      tot2: { font: { b: 1, sz: 9.5, color: NAVY }, fill: 'E8EDF5', border: { all: 'thin', color: LINE }, numFmt: '0.00', align: { h: 'center', v: 'center' } },
+      totL: { font: { b: 1, sz: 9.5, color: NAVY }, fill: 'E8EDF5', border: { all: 'thin', color: LINE } },
+      cell: { font: { sz: 9, color: '1F3864' }, border: { all: 'hair', color: 'C9D1DE' }, numFmt: '#,##0', align: { h: 'center', v: 'center' } },
+      cellOn: { font: { sz: 9, color: '1F3864' }, fill: 'D6E2F3', border: { all: 'hair', color: 'C9D1DE' }, numFmt: '#,##0', align: { h: 'center', v: 'center' } },
+      moved: { font: { b: 1, sz: 9, color: '5C3D00' }, fill: 'FFD970', border: { all: 'hair', color: 'C9D1DE' }, numFmt: '#,##0', align: { h: 'center', v: 'center' } },
+      movedOut: { fill: 'DDE1E8', border: { all: 'hair', color: 'C9D1DE' } },
+      note: { font: { sz: 9, i: 1, color: MUTED }, align: { wrap: 1, v: 'top' } },
+      legal: { font: { sz: 8, color: MUTED }, align: { wrap: 1, v: 'top' } },
+      legalB: { font: { sz: 8, b: 1, color: '1A1A1A' } },
+      txt: { font: { sz: 10 }, align: { wrap: 1, v: 'top' }, border: { all: 'thin', color: LINE } },
+      ok: { font: { b: 1, sz: 11, color: '1E6B3F' }, fill: 'E5F3EA', border: { all: 'thin', color: '9CCFAF' }, align: { wrap: 1, v: 'center', indent: 1 } },
+      high: { font: { b: 1, sz: 11, color: '8A5D00' }, fill: 'FFF3D1', border: { all: 'thin', color: 'F0D58C' }, align: { wrap: 1, v: 'center', indent: 1 } },
+      over: { font: { b: 1, sz: 11, color: '9C0006' }, fill: 'FFC7CE', border: { all: 'thin', color: 'F2B8B8' }, align: { wrap: 1, v: 'center', indent: 1 } }
+    };
+    const footer = `&L&7${H.copyright()} Confidential – property of Regen Renewables (Pvt) Ltd.&R&7Page &P of &N`;
+    const legal = (sh, r, c1, c2) => {
+      sh.set(r, c1, H.copyright(), S.legalB); sh.merge(r, c1, r, c2);
+      sh.set(r + 1, c1, H.NOTICE, S.legal); sh.merge(r + 1, c1, r + 1, c2); sh.height(r + 1, 34);
+      sh.set(r + 2, c1, H.COMPANY_LINE, S.legal); sh.merge(r + 2, c1, r + 2, c2);
+    };
+    const est = (text, chars) => Math.max(15, Math.ceil(String(text).length / chars) * 13 + 4);
+
+    // ---- layout of the profile sheets (needed by Summary formulas) ----
+    const n = scoped.length;
+    const L = { r0: 4, cTotW: n + 1, cTotKW: n + 2, cRated: n + 3, cLoad: n + 4 };
+    if (three) { L.cL1 = n + 5; L.cL2 = n + 6; L.cL3 = n + 7; L.cPL = n + 8; L.cStatus = n + 9; } else L.cStatus = n + 5;
+    L.cSurge = L.cStatus + 1; L.cOn = L.cStatus + 2;
+    const PROF = "'24h Load Profile'";
+    const colR = (cc) => `${PROF}!$${XW.colName(cc)}$${L.r0 + 1}:$${XW.colName(cc)}$${L.r0 + 24}`;
+
+    // ================= Summary =================
+    const sm = wb.sheet('Summary'); sm.grid = false; sm.landscape = true; sm.footer = footer;
+    [2, 36, 16, 16, 16, 2].forEach((w, i) => sm.width(i, w));
+    for (let k = 6; k <= 15; k++) sm.width(k, 10);
+    sm.set(0, 1, 'HYBRID SYSTEM LOAD CALCULATION', S.title); sm.merge(0, 1, 0, 15); sm.style(0, 1, 0, 15, S.title); sm.height(0, 28);
+    sm.set(1, 1, `${H.COMPANY.name}  ·  ${H.COMPANY.addr}  ·  ${H.COMPANY.web}`, S.sub); sm.merge(1, 1, 1, 15);
+    let r = 3;
+    const sec = t => { sm.set(r, 1, t, S.sec); sm.style(r, 1, r, 4, S.sec); sm.merge(r, 1, r, 4); r++; };
+    const kv = (k, v, st = S.v, f) => { sm.set(r, 1, k, S.k); sm.set(r, 2, v, st, f); sm.style(r, 3, r, 4, st); sm.merge(r, 2, r, 4); const at = r; r++; return at; };
+    sec('CUSTOMER & ELECTRICITY CONNECTION');
+    kv('Customer', c.name || '—');
+    const ar = kv('Installation address', c.address || '—'); sm.height(ar, est(c.address, 45));
+    kv('Mobile / email', [c.phone, c.email].filter(Boolean).join(' · ') || '—');
+    kv(`${c.utility || 'CEB'} account number`, c.account || '—');
+    kv('Supply type / capacity', [c.supply, c.capacity].filter(Boolean).join(' · ') || '—');
+    kv('Tariff', c.tariff || '—');
+    kv('Average monthly use', c.units || c.bill ? `${c.units || '—'} kWh · Rs. ${c.bill || '—'}` : '—');
+    kv('Existing solar', c.solar === 'Yes' ? `Yes – ${c.solarKw || '?'} kW ${c.solarScheme ? '(' + c.solarScheme + ')' : ''}` : (c.solar || 'No'));
+    kv('Power cuts / backup needed', `${c.outages || '—'} · ${c.backupHrs ? c.backupHrs + ' h backup' : 'backup hours not given'}`);
+    if (P.formSubmitted) kv('Customer form received', new Date(P.formSubmitted).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }));
+    kv('Prepared by / reference', [P.prep.by, P.prep.ref, P.prep.date].filter(Boolean).join(' · ') || '—');
+    r++;
+    sec('SELECTED INVERTER  (yellow cells are inputs – change them to re-check)');
+    kv('Inverter output', three ? 'Three-phase' : 'Single-phase');
+    const rRated = kv('Rated output power (kW)', inv.kw, S.inp);
+    const rPL = three ? kv('Max output per phase (kW)', H.phaseLimitW(inv) / 1000, S.inp) : null;
+    const rSurge = kv('Surge capability (× rated, ~10 s)', inv.surge, S.inp);
+    const rWarn = kv('High-loading warning level', inv.warn / 100, S.inpPct);
+    kv('Sizing margin used for recommendation', inv.margin / 100, { ...S.v, numFmt: '0%' });
+    kv('Loads checked', inv.scope === 'backup' ? 'Power-cut (backup) loads only' : 'All appliances');
+    const RATED = `Summary!$C$${rRated + 1}`, WARN = `Summary!$C$${rWarn + 1}`, PL = rPL != null ? `Summary!$C$${rPL + 1}` : null, SURGE = `Summary!$C$${rSurge + 1}`;
+    r++;
+    sec('RESULTS – 24-HOUR LOAD PROFILE');
+    const kwR = colR(L.cTotKW), stR = colR(L.cStatus), tR = colR(0);
+    const rPeak = kv('Peak simultaneous load (kW)', +(res.peak / 1000).toFixed(3), S.res, `MAX(${kwR})`);
+    kv('Time of peak', `${H.hh(res.peakHour)}–${H.hh(res.peakHour + 1)}`, S.resTxt, `INDEX(${tR},MATCH(MAX(${kwR}),${kwR},0))`);
+    kv('Inverter loading at peak', res.peak / res.rated, S.resPct, `C${rPeak + 1}/${RATED}`);
+    kv('Hours over the inverter rating', res.over.length, { ...S.resTxt, numFmt: '0' }, `COUNTIF(${stR},"OVERLOAD")`);
+    kv('Hours above warning level', res.high.length, { ...S.resTxt, numFmt: '0' }, `COUNTIF(${stR},"HIGH")`);
+    const rAppTot = 4 + P.appliances.length;   // Appliances sheet total row (0-based)
+    kv('Connected load (kW)', +(res.connected / 1000).toFixed(3), S.res, `Appliances!$H$${rAppTot + 1}/1000`);
+    kv('Daily energy (kWh/day)', +res.energy.toFixed(2), S.res, `Appliances!$M$${rAppTot + 1}`);
+    kv('Energy 6 PM – 6 AM (kWh/day)', +res.eNight.toFixed(2), S.vn);
+    kv('Largest starting surge (kW)', +(res.maxSurgePeak / 1000).toFixed(2), S.vn);
+    r++;
+    // Assessment
+    const v = verdict(res, inv);
+    sec('ASSESSMENT');
+    sm.set(r, 1, v.h, S[v.cls]); sm.style(r, 1, r, 15, S[v.cls]); sm.merge(r, 1, r, 15); sm.height(r, 24); r++;
+    sm.set(r, 1, v.p, S.txt); sm.style(r, 1, r, 15, S.txt); sm.merge(r, 1, r, 15); sm.height(r, est(v.p, 150)); r++;
+    if (res.surge.length) {
+      const sN = res.surge.map(h => res.hours[h]).sort((a, b) => b.surgePeak - a.surgePeak)[0];
+      const t = `Starting surge: at ${H.ampm(sN.h)}, starting the ${sN.extraName} while ${H.fmtKW(sN.total)} kW is running needs about ${H.fmtKW(sN.surgePeak)} kW for a few seconds, above the ${(inv.kw * inv.surge).toFixed(1)} kW surge capability. Affected hours: ${hourRange(res.surge)}.`;
+      sm.set(r, 1, t, S.txt); sm.style(r, 1, r, 15, S.txt); sm.merge(r, 1, r, 15); sm.height(r, est(t, 150)); r++;
+    }
+    r++;
+    sec('RECOMMENDATIONS');
+    const line = (t, st = S.txt) => { sm.set(r, 1, t, st); sm.style(r, 1, r, 15, st); sm.merge(r, 1, r, 15); sm.height(r, est(t, 150)); r++; };
+    if (!res.over.length) line('Option A – Times of use: no overload with the customer\'s times; no changes needed.');
+    else if (plan && plan.moves.length) {
+      line(`Option A – Change times of use (flexible appliances): ${plan.resolved ? 'these changes remove every overload' : 'these changes reduce the overload but do not remove it; still over in ' + hourRange(plan.result.over)}. New peak ${H.fmtKW(plan.result.peak)} kW. See the "Adjusted Profile" sheet.`);
+      H.groupMoves(plan.moves).forEach(g => line(`      • ${g.name} (${H.fmtKW(g.p)} kW): move from ${H.slotsText(g.from)} to ${H.slotsText(g.to)}`));
+    } else line(`Option A – Change times of use: not possible with the current answers – none of the appliances running in ${hourRange(res.over)} is marked as flexible, or no other hour has spare capacity.`);
+    const same = rec.pick && Math.abs(rec.pick.total - inv.kw) < 1e-9;
+    line(`Option B – Inverter size: ${rec.label} recommended for the customer's times of use (needs ${rec.req.toFixed(2)} kW incl. ${inv.margin}% margin; set by ${rec.driver === 'surge' ? 'motor starting surge' : rec.driver === 'phase' ? 'the most loaded phase' : 'the running peak'}). ${same ? 'The selected size matches.' : rec.pick && rec.pick.total > inv.kw ? `The selected ${inv.kw} kW is too small for these times.` : `The selected ${inv.kw} kW is larger than needed.`}`);
+    if (recAfter && recAfter.pick && rec.pick && recAfter.pick.total < rec.pick.total) line(`With the time changes in option A, ${recAfter.label} is enough.`);
+    r++;
+    sm.set(r, 1, 'Notes: the peak check uses the full rating of every unit used at the same time, for each hour it is on. Duty factor and hours per day affect daily energy only. Each hour shows the load from that hour to the next.', S.note); sm.merge(r, 1, r, 15); sm.height(r, 26); r += 2;
+    legal(sm, r, 1, 15);
+    // chart image beside the customer block
+    try {
+      const png = await H.svgToPng(H.chartSVG(res, inv, H.LIGHT_PAL, { w: 760, h: 300 }), 2);
+      sm.image(png.bytes, 6, 3, 700, 276);
+    } catch (e) { /* chart is optional */ }
+
+    // ================= Appliances =================
+    const ap = wb.sheet('Appliances'); ap.landscape = true; ap.footer = footer; ap.freeze = [4, 2]; ap.printRows = [3, 3];
+    const AH = ['No', 'Appliance', 'Group', 'Load type', 'Qty', 'Used at same time', 'Rating each (W)', 'Connected (W)', 'Running (W)', 'Surge (×)', 'Duty', 'Hours / day', 'Energy (kWh/day)', 'Power cut', 'Time can change', 'Phase', 'How often', 'Time of use', 'In check', 'Notes'];
+    [5, 34, 18, 16, 6, 9, 10, 11, 11, 8, 7, 8, 11, 8, 9, 7, 12, 30, 7, 30].forEach((w, i) => ap.width(i, w));
+    ap.set(0, 0, 'APPLIANCE SCHEDULE', S.title); ap.style(0, 0, 0, AH.length - 1, S.title); ap.merge(0, 0, 0, AH.length - 1); ap.height(0, 24);
+    ap.set(1, 0, `${c.name || 'Customer'} · ${c.address ? c.address.replace(/\s+/g, ' ') : ''}`, S.sub); ap.merge(1, 0, 1, AH.length - 1);
+    ap.set(2, 0, 'Connected = Qty × rating. Running = units used at the same time × rating (used for the peak check). Energy = running × duty × hours per day.', S.note); ap.merge(2, 0, 2, AH.length - 1);
+    AH.forEach((h, i) => ap.set(3, i, h, S.th)); ap.height(3, 32);
+    P.appliances.forEach((a, i) => {
+      const rr = 4 + i, R1 = rr + 1, inc = H.inScope(a, inv);
+      ap.set(rr, 0, i + 1, S.tdC); ap.set(rr, 1, a.name, S.tdW); ap.set(rr, 2, H.CAT_NAME[a.cat] || '', S.td); ap.set(rr, 3, H.TYPES[a.t].label, S.td);
+      ap.set(rr, 4, a.qty, S.tdN); ap.set(rr, 5, a.qtyOn, S.tdN); ap.set(rr, 6, a.w, S.tdN);
+      ap.set(rr, 7, a.qty * a.w, S.tdN, `E${R1}*G${R1}`); ap.set(rr, 8, a.qtyOn * a.w, S.tdN, `F${R1}*G${R1}`);
+      ap.set(rr, 9, a.s, S.tdN2); ap.set(rr, 10, a.d, S.tdP); ap.set(rr, 11, a.hpd, S.tdN2);
+      ap.set(rr, 12, +(a.qtyOn * a.w * a.d * a.hpd / 1000).toFixed(4), S.tdN2, `I${R1}*K${R1}*L${R1}/1000`);
+      ap.set(rr, 13, a.b ? 'Yes' : 'No', S.tdC); ap.set(rr, 14, a.f ? 'Yes' : 'No', S.tdC); ap.set(rr, 15, three ? (a.ph || 'L1') : '1φ', S.tdC);
+      ap.set(rr, 16, H.USE_LABEL[a.use], S.td); ap.set(rr, 17, H.slotsText(a.hrs) || '—', S.tdW); ap.set(rr, 18, inc ? 'Yes' : 'No', S.tdC); ap.set(rr, 19, a.notes, S.tdW);
+    });
+    const tr = 4 + P.appliances.length, last = tr;   // total row
+    ap.set(tr, 0, '', S.totL); ap.set(tr, 1, 'Total (appliances in check)', S.totL); for (let k = 2; k < AH.length; k++) ap.set(tr, k, '', S.totL);
+    const sumIf = col => `SUMIF($S$5:$S$${last},"Yes",${col}$5:${col}$${last})`;
+    const tot = (fn) => P.appliances.filter(a => H.inScope(a, inv)).reduce((s, a) => s + fn(a), 0);
+    ap.set(tr, 7, tot(a => a.qty * a.w), S.tot, sumIf('H'));
+    ap.set(tr, 8, tot(a => a.qtyOn * a.w), S.tot, sumIf('I'));
+    ap.set(tr, 12, +tot(a => a.qtyOn * a.w * a.d * a.hpd / 1000).toFixed(3), S.tot2, sumIf('M'));
+    legal(ap, tr + 2, 0, 12);
+
+    // ================= Profile sheets =================
+    function profileSheet(name, title, apps, R, moved) {
+      const sh = wb.sheet(name); sh.landscape = true; sh.footer = footer; sh.freeze = [L.r0, 1]; sh.printRows = [L.r0 - 1, L.r0 - 1]; sh.zoom = 90;
+      const list = apps.filter(a => H.inScope(a, inv));
+      const lastC = L.cOn;
+      sh.width(0, 13); list.forEach((a, i) => sh.width(i + 1, 5.6));
+      sh.width(L.cTotW, 9); sh.width(L.cTotKW, 8.5); sh.width(L.cRated, 8.5); sh.width(L.cLoad, 8.5);
+      if (three) [L.cL1, L.cL2, L.cL3, L.cPL].forEach(cc => sh.width(cc, 7.5));
+      sh.width(L.cStatus, 11.5); sh.width(L.cSurge, 24); sh.width(L.cOn, 60);
+      sh.set(0, 0, title, S.title); sh.style(0, 0, 0, lastC, S.title); sh.merge(0, 0, 0, lastC); sh.height(0, 24);
+      sh.set(1, 0, `Each appliance column shows its running load (W) in that hour. The inverter rating comes from the Summary sheet – change it there and the totals, loading and status update. Red rows are over the rating; amber rows are above the warning level.${moved ? ' Gold cells = hours moved in; grey cells = hours moved out.' : ''}`, S.note);
+      sh.merge(1, 0, 1, lastC); sh.height(1, 26);
+      if (three) { sh.set(2, 0, 'Phase', S.k); list.forEach((a, i) => sh.set(2, i + 1, a.ph || 'L1', S.tdC)); }
+      const hr = L.r0 - 1;
+      sh.set(hr, 0, 'Time', S.th);
+      list.forEach((a, i) => sh.set(hr, i + 1, `${a.name}${a.qtyOn > 1 ? ' ×' + a.qtyOn : ''} (${a.qtyOn * a.w >= 1000 ? (a.qtyOn * a.w / 1000).toFixed(2) + ' kW' : a.qtyOn * a.w + ' W'})`, S.thRot));
+      sh.set(hr, L.cTotW, 'Total load (W)', S.th); sh.set(hr, L.cTotKW, 'Total load (kW)', S.th); sh.set(hr, L.cRated, 'Inverter rating (kW)', S.th); sh.set(hr, L.cLoad, 'Loading (%)', S.th);
+      if (three) { sh.set(hr, L.cL1, 'L1 (kW)', S.th); sh.set(hr, L.cL2, 'L2 (kW)', S.th); sh.set(hr, L.cL3, 'L3 (kW)', S.th); sh.set(hr, L.cPL, 'Phase limit (kW)', S.th); }
+      sh.set(hr, L.cStatus, 'Status', S.th); sh.set(hr, L.cSurge, 'Starting surge check', S.th); sh.set(hr, L.cOn, 'Appliances operating', S.th);
+      sh.height(hr, 130);
+      const A1 = XW.colName(1), An = XW.colName(Math.max(1, list.length));
+      const cT = XW.colName(L.cTotW), cK = XW.colName(L.cTotKW), cR = XW.colName(L.cRated), cLd = XW.colName(L.cLoad);
+      for (let h = 0; h < 24; h++) {
+        const rr = L.r0 + h, R1 = rr + 1, st = R.hours[h];
+        sh.set(rr, 0, `${H.hh(h)}–${H.hh(h + 1)}`, S.td);
+        list.forEach((a, i) => {
+          const key = a.id + ':' + h;
+          const style = moved && moved.in.has(key) ? S.moved : moved && moved.out.has(key) ? S.movedOut : a.hrs[h] ? S.cellOn : S.cell;
+          sh.set(rr, i + 1, a.hrs[h] ? H.runW(a) : null, style);
+        });
+        sh.set(rr, L.cTotW, st.total, S.tdN, list.length ? `SUM(${A1}${R1}:${An}${R1})` : null);
+        sh.set(rr, L.cTotKW, +(st.total / 1000).toFixed(4), S.tdB, `${cT}${R1}/1000`);
+        sh.set(rr, L.cRated, inv.kw, S.tdN2, RATED);
+        sh.set(rr, L.cLoad, st.total / R.rated, S.tdP, `IF(${cR}${R1}>0,${cK}${R1}/${cR}${R1},0)`);
+        let statusF;
+        if (three) {
+          const ph = (k) => `(SUMIF($${A1}$3:$${An}$3,"${k}",${A1}${R1}:${An}${R1})+SUMIF($${A1}$3:$${An}$3,"3P",${A1}${R1}:${An}${R1})/3)/1000`;
+          sh.set(rr, L.cL1, +(st.ph.L1 / 1000).toFixed(4), S.tdN2, ph('L1'));
+          sh.set(rr, L.cL2, +(st.ph.L2 / 1000).toFixed(4), S.tdN2, ph('L2'));
+          sh.set(rr, L.cL3, +(st.ph.L3 / 1000).toFixed(4), S.tdN2, ph('L3'));
+          sh.set(rr, L.cPL, R.pl / 1000, S.tdN2, PL);
+          const mx = `MAX(${XW.colName(L.cL1)}${R1}:${XW.colName(L.cL3)}${R1})`, plc = `${XW.colName(L.cPL)}${R1}`;
+          statusF = `IF(OR(${cK}${R1}>${cR}${R1}+0.00001,${mx}>${plc}+0.00001),"OVERLOAD",IF(OR(${cLd}${R1}>${WARN}+0.00001,${mx}>${plc}*${WARN}+0.00001),"HIGH","OK"))`;
+        } else statusF = `IF(${cK}${R1}>${cR}${R1}+0.00001,"OVERLOAD",IF(${cLd}${R1}>${WARN}+0.00001,"HIGH","OK"))`;
+        sh.set(rr, L.cStatus, st.status === 'over' ? 'OVERLOAD' : st.status === 'high' ? 'HIGH' : 'OK', { ...S.tdC, font: { b: 1, sz: 9.5 } }, statusF);
+        sh.set(rr, L.cSurge, st.on.length ? (st.surgeOver ? `Check: ${st.extraName} start ≈ ${H.fmtKW(st.surgePeak)} kW` : `OK (≈ ${H.fmtKW(st.surgePeak)} kW)`) : '', S.td);
+        sh.set(rr, L.cOn, st.on.map(o => `${o.name}${o.n > 1 ? ' ×' + o.n : ''} (${o.p >= 1000 ? (o.p / 1000).toFixed(2) + ' kW' : Math.round(o.p) + ' W'})`).join(', '), S.tdW);
+      }
+      const r1 = L.r0 + 1, r24 = L.r0 + 24, mr = L.r0 + 24;
+      // max + hours-on rows
+      sh.set(mr, 0, 'Maximum', S.totL); sh.set(mr + 1, 0, 'Hours on', S.totL);
+      list.forEach((a, i) => { const cl = XW.colName(i + 1); sh.set(mr, i + 1, H.runW(a), { ...S.tot, align: { h: 'center', v: 'center' } }, `MAX(${cl}${r1}:${cl}${r24})`); sh.set(mr + 1, i + 1, H.countHrs(a.hrs), S.tot, `COUNT(${cl}${r1}:${cl}${r24})`); });
+      sh.set(mr, L.cTotW, R.peak, S.tot, `MAX(${cT}${r1}:${cT}${r24})`); sh.set(mr, L.cTotKW, +(R.peak / 1000).toFixed(4), S.tot2, `MAX(${cK}${r1}:${cK}${r24})`);
+      sh.set(mr, L.cRated, inv.kw, S.tot2, RATED); sh.set(mr, L.cLoad, R.peak / R.rated, { ...S.tot, numFmt: '0%' }, `MAX(${cLd}${r1}:${cLd}${r24})`);
+      if (three) [L.cL1, L.cL2, L.cL3].forEach((cc, k) => { const cl = XW.colName(cc); sh.set(mr, cc, +(R.peakPh['L' + (k + 1)] / 1000).toFixed(4), S.tot2, `MAX(${cl}${r1}:${cl}${r24})`); });
+      const cS = XW.colName(L.cStatus);
+      sh.set(mr, L.cStatus, `${R.over.length} h over`, S.totL, `COUNTIF(${cS}${r1}:${cS}${r24},"OVERLOAD")&" h over"`);
+      for (let cc = 1; cc <= lastC; cc++) { if (!sh.cells.has(mr * 16384 + cc)) sh.set(mr, cc, '', S.totL); if (!sh.cells.has((mr + 1) * 16384 + cc)) sh.set(mr + 1, cc, '', S.totL); }
+      // conditional highlighting – recalculates when the rating on Summary changes
+      const rows = `${r1}:${r24}`;
+      const statusCell = `$${cS}${r1}`;
+      const blockA = `A${r1}:A${r24} ${cT}${r1}:${XW.colName(L.cStatus)}${r24}`;
+      sh.cond(blockA, [
+        { formula: `${statusCell}="OVERLOAD"`, style: { fill: 'FFC7CE', font: { color: '9C0006', b: 1 } } },
+        { formula: `${statusCell}="HIGH"`, style: { fill: 'FFEB9C', font: { color: '9C5700', b: 1 } } }
+      ]);
+      if (three) sh.cond(`${XW.colName(L.cL1)}${r1}:${XW.colName(L.cL3)}${r24}`, [{ formula: `${XW.colName(L.cL1)}${r1}>$${XW.colName(L.cPL)}${r1}+0.00001`, style: { fill: 'FFC7CE', font: { color: '9C0006', b: 1 } } }]);
+      void rows;
+      legal(sh, mr + 3, 0, Math.min(lastC, 18));
+      return sh;
+    }
+    profileSheet('24h Load Profile', `24-HOUR LOAD PROFILE – ${c.name || 'Customer'} – inverter ${inv.kw} kW ${three ? 'three' : 'single'}-phase`, P.appliances, res, null);
+    if (plan && plan.moves.length) {
+      const moved = { in: new Set(), out: new Set() };
+      H.groupMoves(plan.moves).forEach(g => { g.to.forEach((on, h) => on && moved.in.add(g.id + ':' + h)); g.from.forEach((on, h) => on && moved.out.add(g.id + ':' + h)); });
+      profileSheet('Adjusted Profile', `ADJUSTED PROFILE – with suggested changes to times of use (${plan.resolved ? 'no overload' : 'overload reduced'})`, plan.apps, plan.result, moved);
+    }
+    return wb.build();
+  }
+
+  // ---------- start ----------
+  loadCurrent();
+  sizeTop(); updateLive();
+  const startTab = H.store.get('tab') || (P.appliances.length ? 'ana' : 'cust');
+  show(['cust', 'apps', 'ana'].includes(startTab) ? startTab : 'cust');
+  window.__hlc = { get P() { return P; }, openData, buildWorkbook, show };   // used by automated tests
+})();
+</script>
+</body>
+</html>
