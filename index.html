@@ -21,6 +21,16 @@
 .tb-acts{display:flex;gap:6px;flex-wrap:wrap}
 .proj{font-size:12.5px;opacity:.85;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+.modelrow{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.modelrow .fld{flex:1 1 240px}
+.ds{margin-top:14px;border:1px solid #d6c08a;background:#fffaf0;border-radius:8px;padding:12px 14px}
+.ds h4{margin:0 0 10px;font-size:13px;color:var(--navy);text-transform:uppercase;letter-spacing:.4px}
+.ds.need{border-color:var(--warn);box-shadow:0 0 0 2px var(--warn-soft)}
+.dswarn{margin-top:12px;border:1px solid #f0d58c;background:var(--warn-soft);border-radius:var(--radius);padding:10px 14px;font-size:14px;color:#6d4a00}
+.ht b.tbad{color:var(--bad)}
+.ht td.pov{color:var(--bad);font-weight:800;background:#fde8e8}
+.phrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0}
+.lgL1{background:#8b5a2b}.lgL2{background:#1c1c1c}.lgL3{background:#8a94a6}
 .import{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--gold-soft);border:1px solid #f0d58c;border-radius:var(--radius);padding:14px;margin-top:16px}
 .import p{margin:0;flex:1;min-width:220px;font-size:14px}
 .sigimg{max-height:70px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:4px}
@@ -201,6 +211,11 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
   <section class="pane" id="p-ana" hidden>
     <div class="sec-h"><h2>Inverter</h2><p>Selected hybrid inverter and check settings</p></div>
     <div class="card">
+      <div class="modelrow">
+        <div class="fld"><label for="iModel">Inverter model (saved datasheets)</label><select id="iModel"></select></div>
+        <button class="btn sm" type="button" id="mSave">Save as model</button>
+        <button class="btn sm danger" type="button" id="mDel" hidden>Delete model</button>
+      </div>
       <div class="inv">
         <div class="fld segf"><span class="lbl">Inverter output</span><div class="seg" id="iPhase"><button type="button" data-v="1">Single-phase</button><button type="button" data-v="3">Three-phase</button></div></div>
         <div class="fld"><label for="iKw">Rated output power (kW)</label><select id="iKw"></select></div>
@@ -208,15 +223,23 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
         <div class="fld"><label for="iSurge">Surge capability (× rated, ~10 s)</label><input id="iSurge" type="number" min="1" step="0.1"></div>
         <div class="fld"><label for="iWarn">High-loading warning (%)</label><input id="iWarn" type="number" min="50" max="100" step="5"></div>
         <div class="fld"><label for="iMargin">Sizing margin (%)</label><input id="iMargin" type="number" min="0" max="100" step="5"></div>
-        <div class="fld" id="iPhWrap" hidden><label for="iPhKw">Max output per phase (kW)</label><input id="iPhKw" type="number" min="0" step="0.1" placeholder="rated ÷ 3"></div>
         <div class="fld segf"><span class="lbl">Loads to check</span><div class="seg" id="iScope"><button type="button" data-v="all">All appliances</button><button type="button" data-v="backup">Power-cut loads only</button></div></div>
+      </div>
+      <div class="ds" id="dsPanel" hidden>
+        <h4>Per-phase limits from the inverter datasheet</h4>
+        <div class="inv">
+          <div class="fld"><label for="iPhKw">Max continuous output per phase (kW)</label><input id="iPhKw" type="number" min="0" step="0.01"></div>
+          <div class="fld"><label for="iUnb">Max imbalance between phases (kW)</label><input id="iUnb" type="number" min="0" step="0.01" placeholder="No limit stated"></div>
+          <div class="fld"><label for="iPhPk">Per-phase peak / overload (kW, ~10 s)</label><input id="iPhPk" type="number" min="0" step="0.01"></div>
+        </div>
+        <p class="hint" style="margin:8px 0 0">Copy these from the datasheet (look for “max. output power per phase”, “unbalanced output” and “peak power, off-grid”). Leave the imbalance blank if the datasheet allows full (100 %) unbalanced output up to the per-phase limit. Hourly loads are compared with the continuous per-phase rating; the peak value is used for motor starting.</p>
       </div>
       <details style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Standard inverter sizes used for recommendations</summary>
         <div class="grid" style="margin-top:10px">
           <div class="fld"><label for="sz1">Single-phase sizes (kW)</label><input id="sz1" type="text"></div>
           <div class="fld"><label for="sz3">Three-phase sizes (kW)</label><input id="sz3" type="text"></div>
         </div>
-        <p class="hint">Comma-separated. Above the largest size, the app suggests identical units in parallel.</p>
+        <p class="hint">Comma-separated. Used only when no saved inverter models match. Above the largest size, the app suggests identical units in parallel.</p>
       </details>
     </div>
     <div id="anaOut"></div>
@@ -338,7 +361,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     return `<div class="nm">${esc(a.name || 'Unnamed appliance')}<small>${esc(H.CAT_NAME[a.cat] || '')} · ${esc(H.slotsText(a.hrs) || 'no hours set')}</small></div>
       <div class="ld tnum">${a.qtyOn}${a.qtyOn !== a.qty ? ` of ${a.qty}` : ''} × ${a.w >= 1000 ? (a.w / 1000) + ' kW' : a.w + ' W'} = <b>${kw.toFixed(2)} kW</b></div>
       ${stripHTML(a.hrs)}
-      <div class="badges">${a.b ? '<span class="pill info">Power cut</span>' : ''}${a.f ? '<span class="pill gold">Flexible</span>' : ''}${+P.inv.phase === 3 ? `<span class="pill info">${a.ph || 'L1'}</span>` : ''}${!scoped ? '<span class="pill high">Not checked</span>' : ''}</div>`;
+      <div class="badges">${a.b ? '<span class="pill info">Power cut</span>' : ''}${a.f ? '<span class="pill gold">Flexible</span>' : ''}${+P.inv.phase === 3 ? `<span class="pill info">${a.ph === '3P' ? '3-phase' : (a.ph || 'L1')}${a.phLock ? ' · fixed' : ''}</span>` : ''}${!scoped ? '<span class="pill high">Not checked</span>' : ''}</div>`;
   }
   const yn = (k, v, labels = ['Yes', 'No']) => `<div class="seg" data-yn="${k}"><button type="button" data-v="1" class="${v ? 'on' : ''}">${labels[0]}</button><button type="button" data-v="0" class="${!v ? 'on' : ''}">${labels[1]}</button></div>`;
   function bodyHTML(a) {
@@ -363,6 +386,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
         <div class="fld"><span class="lbl">Needed in power cuts</span>${yn('b', a.b)}</div>
         <div class="fld"><span class="lbl">Time can be changed</span>${yn('f', a.f)}</div>
         <div class="fld"><span class="lbl">Include in check</span>${yn('inc', a.inc)}</div>
+        ${+P.inv.phase === 3 ? `<div class="fld"><span class="lbl">Phase fixed by wiring</span>${yn('phLock', a.phLock)}</div>` : ''}
       </div>
       <div class="fld"><label for="x_${a.id}">Notes</label><input id="x_${a.id}" type="text" data-f="notes" value="${esc(a.notes)}"></div>
       <div class="acts"><button class="btn sm" type="button" data-act="dup">Duplicate</button><button class="btn sm danger" type="button" data-act="del">Delete</button></div>`;
@@ -448,34 +472,83 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
   });
 
   // ---------- inverter settings ----------
+  const models = () => (H.store.get('models', []) || []).filter(m => m && m.name);
+  const modelsFor = ph => models().filter(m => +m.phase === +ph).sort((a, b) => a.kw - b.kw || a.name.localeCompare(b.name));
+  const manual = () => { P.inv.model = ''; };          // any manual change detaches the project from a saved model
+  function applyModel(m) {
+    Object.assign(P.inv, { phase: +m.phase, kw: +m.kw, surge: H.num(m.surge, 2), phaseKw: m.phaseKw ?? '', unbalKw: m.unbalKw ?? '', phasePeakKw: m.phasePeakKw ?? '', model: m.name, scaled: false });
+    if (+m.phase === 3 && !P.appliances.some(a => a.ph)) H.autoBalance(P.appliances, P.inv);
+  }
   function renderInverter() {
-    const inv = P.inv;
+    const inv = P.inv, three = +inv.phase === 3;
     $$('#iPhase button').forEach(b => b.classList.toggle('on', +b.dataset.v === +inv.phase));
     $$('#iScope button').forEach(b => b.classList.toggle('on', b.dataset.v === inv.scope));
+    const ms = modelsFor(inv.phase);
+    $('#iModel').innerHTML = `<option value="">${ms.length ? 'Not a saved model (enter values below)' : 'No saved models yet – enter values, then “Save as model”'}</option>` +
+      ms.map(m => `<option value="${esc(m.name)}">${esc(m.name)} – ${m.kw} kW${three ? `, ${m.phaseKw || '?'} kW/phase` : ''}</option>`).join('');
+    $('#iModel').value = ms.some(m => m.name === inv.model) ? inv.model : '';
+    $('#mDel').hidden = !$('#iModel').value;
     const sizes = P.sizes[inv.phase];
     const isStd = sizes.some(s => Math.abs(s - inv.kw) < 1e-9);
     $('#iKw').innerHTML = sizes.map(s => `<option value="${s}">${s} kW</option>`).join('') + '<option value="custom">Other size…</option>';
     $('#iKw').value = isStd ? String(sizes.find(s => Math.abs(s - inv.kw) < 1e-9)) : 'custom';
     $('#iCustomWrap').hidden = isStd; $('#iCustom').value = inv.kw;
     $('#iSurge').value = inv.surge; $('#iWarn').value = inv.warn; $('#iMargin').value = inv.margin;
-    $('#iPhWrap').hidden = +inv.phase !== 3; $('#iPhKw').value = inv.phaseKw || '';
-    $('#iPhKw').placeholder = `${(inv.kw / 3).toFixed(2)} (rated ÷ 3)`;
+    $('#dsPanel').hidden = !three;
+    $('#iPhKw').value = inv.phaseKw === '' ? '' : inv.phaseKw;
+    $('#iPhKw').placeholder = `Required – e.g. ${(inv.kw / 3).toFixed(2)} if rated ÷ 3`;
+    $('#iUnb').value = inv.unbalKw === '' ? '' : inv.unbalKw;
+    const L = H.limits(inv);
+    $('#iPhPk').value = inv.phasePeakKw === '' ? '' : inv.phasePeakKw;
+    $('#iPhPk').placeholder = `${(L.ppk / 1000).toFixed(2)} (per phase × surge)`;
+    $('#dsPanel').classList.toggle('need', three && (L.assumed || L.scaled));
     $('#sz1').value = P.sizes[1].join(', '); $('#sz3').value = P.sizes[3].join(', ');
   }
+  $('#iModel').addEventListener('change', e => {
+    const m = models().find(x => x.name === e.target.value);
+    if (m) { applyModel(m); toast(`Using ${m.name}`); } else P.inv.model = '';
+    renderInverter(); changed();
+  });
+  $('#mSave').addEventListener('click', () => {
+    const inv = P.inv, three = +inv.phase === 3;
+    if (three && !(H.num(inv.phaseKw, 0) > 0)) { toast('Enter the per-phase output from the datasheet first'); $('#iPhKw').focus(); return; }
+    const m = modal(`<h3>Save inverter model</h3><p class="muted small" style="margin-top:0">Saved on this device. Recommendations then choose from your saved datasheets.</p>
+      <div class="fld"><label for="mName">Model name</label><input id="mName" type="text" value="${esc(inv.model || '')}" placeholder="e.g. Brand SUN-10K three-phase hybrid"></div>
+      <p class="small">${inv.kw} kW ${three ? 'three' : 'single'}-phase · surge ${inv.surge}×${three ? ` · ${inv.phaseKw} kW per phase · imbalance ${inv.unbalKw === '' ? 'no limit stated' : inv.unbalKw + ' kW'} · per-phase peak ${(H.limits(inv).ppk / 1000).toFixed(2)} kW` : ''}</p>
+      <div class="acts"><button class="btn" data-close>Cancel</button><button class="btn primary" id="mOk">Save model</button></div>`);
+    m.querySelector('#mName').focus();
+    m.querySelector('#mOk').onclick = () => {
+      const name = m.querySelector('#mName').value.trim(); if (!name) { m.querySelector('#mName').focus(); return; }
+      const list = models().filter(x => x.name !== name);
+      list.push({ name, phase: +inv.phase, kw: inv.kw, surge: inv.surge, phaseKw: inv.phaseKw, unbalKw: inv.unbalKw, phasePeakKw: inv.phasePeakKw });
+      H.store.set('models', list); P.inv.model = name; P.inv.scaled = false; m.remove(); renderInverter(); changed(); toast(`${name} saved`);
+    };
+  });
+  $('#mDel').addEventListener('click', e => {
+    const b = e.currentTarget, name = $('#iModel').value; if (!name) return;
+    if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Confirm delete'; setTimeout(() => { b.dataset.confirm = ''; b.textContent = 'Delete model'; }, 4000); return; }
+    H.store.set('models', models().filter(x => x.name !== name)); P.inv.model = ''; b.dataset.confirm = ''; b.textContent = 'Delete model'; renderInverter(); changed(); toast(`${name} deleted`);
+  });
   $('#iPhase').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
-    P.inv.phase = +b.dataset.v;
+    if (+b.dataset.v === +P.inv.phase) return;
+    P.inv.phase = +b.dataset.v; manual(); P.inv.phaseKw = ''; P.inv.unbalKw = ''; P.inv.phasePeakKw = ''; P.inv.scaled = false;
     if (P.inv.phase === 3) {
       if (!P.appliances.some(a => a.ph)) H.autoBalance(P.appliances, P.inv);
       if (!P.sizes[3].includes(P.inv.kw)) P.inv.kw = P.sizes[3].find(s => s >= P.inv.kw) || P.inv.kw;
     }
     renderInverter(); changed();
+    if (P.inv.phase === 3) setTimeout(() => $('#iPhKw').focus(), 50);
   });
   $('#iScope').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; P.inv.scope = b.dataset.v; renderInverter(); changed(); });
-  $('#iKw').addEventListener('change', e => { if (e.target.value === 'custom') { $('#iCustomWrap').hidden = false; $('#iCustom').focus(); return; } P.inv.kw = +e.target.value; renderInverter(); changed(); });
-  $('#iCustom').addEventListener('input', e => { const v = H.num(e.target.value); if (v > 0) { P.inv.kw = v; changed(); } });
-  [['iSurge', 'surge', 1], ['iWarn', 'warn', 10], ['iMargin', 'margin', 0]].forEach(([id, k, min]) => $('#' + id).addEventListener('input', e => { const v = H.num(e.target.value, NaN); if (isFinite(v) && v >= min) { P.inv[k] = k === 'warn' ? Math.min(100, v) : v; changed(); } }));
-  $('#iPhKw').addEventListener('input', e => { P.inv.phaseKw = e.target.value === '' ? '' : Math.max(0, H.num(e.target.value)); changed(); });
+  $('#iKw').addEventListener('change', e => { if (e.target.value === 'custom') { $('#iCustomWrap').hidden = false; $('#iCustom').focus(); return; } P.inv.kw = +e.target.value; manual(); renderInverter(); changed(); });
+  $('#iCustom').addEventListener('input', e => { const v = H.num(e.target.value); if (v > 0) { P.inv.kw = v; manual(); changed(); } });
+  [['iSurge', 'surge', 1], ['iWarn', 'warn', 10], ['iMargin', 'margin', 0]].forEach(([id, k, min]) => $('#' + id).addEventListener('input', e => { const v = H.num(e.target.value, NaN); if (isFinite(v) && v >= min) { P.inv[k] = k === 'warn' ? Math.min(100, v) : v; if (k === 'surge') manual(); changed(); } }));
+  [['iPhKw', 'phaseKw'], ['iUnb', 'unbalKw'], ['iPhPk', 'phasePeakKw']].forEach(([id, k]) => $('#' + id).addEventListener('input', e => {
+    P.inv[k] = e.target.value === '' ? '' : Math.max(0, H.num(e.target.value)); P.inv.scaled = false; manual();
+    $('#dsPanel').classList.toggle('need', H.limits(P.inv).assumed); if (k !== 'phasePeakKw') $('#iPhPk').placeholder = `${(H.limits(P.inv).ppk / 1000).toFixed(2)} (per phase × surge)`;
+    changed();
+  }));
   ['sz1', 'sz3'].forEach(id => $('#' + id).addEventListener('change', e => {
     const list = e.target.value.split(/[,\s;]+/).map(Number).filter(x => x > 0).sort((a, b) => a - b);
     if (list.length) { P.sizes[id === 'sz1' ? 1 : 3] = [...new Set(list)]; renderInverter(); changed(); }
@@ -483,93 +556,157 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
 
   // ---------- analysis ----------
   const hourRange = list => H.slotsText(list.reduce((a, h) => { a[h] = 1; return a; }, H.emptyHrs()), '12');
+  let undoPhases = null, chartView = 'total';
+  const kwTxt = w => w >= 1000 ? (w / 1000).toFixed(2) + ' kW' : Math.round(w) + ' W';
   function compute() {
-    const res = H.analyse(P.appliances, P.inv);
-    const plan = res.over.length ? H.planShift(P.appliances, P.inv) : null;
-    const rec = H.recommendInverter(res, P.inv, P.sizes[P.inv.phase]);
-    const recAfter = plan && plan.moves.length ? H.recommendInverter(plan.result, P.inv, P.sizes[P.inv.phase]) : null;
-    return { res, plan, rec, recAfter };
+    const inv = P.inv, mlib = models();
+    const res = H.analyse(P.appliances, inv);
+    const plan = res.over.length ? H.planShift(P.appliances, inv) : null;
+    const phasePlan = res.three ? H.planPhases(P.appliances, inv) : null;
+    const rec = H.recommendInverter(res, inv, P.sizes[inv.phase], mlib);
+    const recAfter = plan && plan.moves.length ? H.recommendInverter(plan.result, inv, P.sizes[inv.phase], mlib) : null;
+    const recPhase = phasePlan && phasePlan.moves.length ? H.recommendInverter(phasePlan.result, inv, P.sizes[inv.phase], mlib) : null;
+    return { res, plan, phasePlan, rec, recAfter, recPhase };
+  }
+  function overSummary(res) {
+    const parts = [];
+    if (res.totalOver.length) parts.push(`total load over ${H.fmtKW(res.rated)} kW in ${hourRange(res.totalOver)}`);
+    if (res.three) {
+      H.PH.forEach(k => { if (res.phOver[k].length) parts.push(`${k} over ${H.fmtKW(res.pl)} kW in ${hourRange(res.phOver[k])}`); });
+      if (res.unbalHours.length) parts.push(`phase imbalance over ${H.fmtKW(res.unbal)} kW in ${hourRange(res.unbalHours)}`);
+    }
+    return parts;
   }
   function verdict(res, inv) {
     const pk = `${H.fmtKW(res.peak)} kW at ${H.ampm(res.peakHour)}`;
     const pct = Math.round(res.peak / res.rated * 100);
-    if (res.over.length) return { cls: 'over', ico: '!', h: `Overload in ${res.over.length} hour${res.over.length > 1 ? 's' : ''}: ${hourRange(res.over)}`,
-      p: `The customer's appliances need up to ${pk}, which is ${pct}% of the ${inv.kw} kW inverter rating${res.three ? ' (including per-phase limits)' : ''}. They cannot all run together at these times. See the options below.` };
+    const n = res.over.length, hs = `${n} hour${n > 1 ? 's' : ''}`;
+    if (n) {
+      const onlyPhase = res.three && !res.totalOver.length;
+      const head = onlyPhase
+        ? (res.phaseOverAny.length && res.unbalHours.length ? `Phase limits exceeded in ${hs}: ${hourRange(res.over)}` : res.phaseOverAny.length ? `Phase overload in ${hs}: ${hourRange(res.over)}` : `Phase imbalance over the limit in ${hs}: ${hourRange(res.over)}`)
+        : `Overload in ${hs}: ${hourRange(res.over)}`;
+      const p = onlyPhase
+        ? `The total load (peak ${pk}, ${pct}% of ${inv.kw} kW) is within the inverter rating, but the load is not shared evenly: ${overSummary(res).join('; ')}. Each phase can only supply its own datasheet limit. See the options below.`
+        : `The customer's appliances need up to ${pk}, which is ${pct}% of the ${inv.kw} kW inverter rating. ${res.three ? 'Limits exceeded: ' + overSummary(res).join('; ') + '. ' : ''}They cannot all run together at these times. See the options below.`;
+      return { cls: 'over', ico: '!', h: head, p };
+    }
     if (res.high.length) return { cls: 'high', ico: '!', h: `Within rating, but above ${inv.warn}% for ${res.high.length} hour${res.high.length > 1 ? 's' : ''}`,
-      p: `Peak ${pk} (${pct}% of ${inv.kw} kW) during ${hourRange(res.high)}. There is little spare capacity for an extra appliance at those times.` };
+      p: `Peak ${pk} (${pct}% of ${inv.kw} kW)${res.three ? `; highest phase ${H.fmtKW(Math.max(res.peakPh.L1, res.peakPh.L2, res.peakPh.L3))} kW of ${H.fmtKW(res.pl)} kW` : ''} during ${hourRange(res.high)}. There is little spare capacity for an extra appliance at those times.` };
     return { cls: 'ok', ico: '✓', h: `The ${inv.kw} kW inverter can supply this load profile`,
-      p: res.peak ? `Peak ${pk}, ${pct}% of the rating. Every hour stays below the ${inv.warn}% warning level.` : 'No appliance hours entered yet.' };
+      p: res.peak ? `Peak ${pk}, ${pct}% of the rating${res.three ? `; every phase stays within ${H.fmtKW(res.pl)} kW` : ''}. Every hour stays below the ${inv.warn}% warning level.` : 'No appliance hours entered yet.' };
   }
   function renderAnalysis() {
     const out = $('#anaOut');
     if (!P.appliances.length) { out.innerHTML = '<div class="card muted" style="margin-top:14px">Add appliances (or open a customer form file) to see the 24-hour load profile.</div>'; return; }
-    const { res, plan, rec, recAfter } = compute();
-    const inv = P.inv;
+    const { res, plan, phasePlan, rec, recAfter, recPhase } = compute();
+    const inv = P.inv, three = res.three;
+    if (!three) chartView = 'total';
     const v = verdict(res, inv);
     const showAdj = chartMode === 'adj' && plan && plan.moves.length;
     const cres = showAdj ? plan.result : res;
+    const maxPh = three ? Math.max(res.peakPh.L1, res.peakPh.L2, res.peakPh.L3) : 0;
+    const kMaxPh = three ? H.PH.find(k => res.peakPh[k] === maxPh) : '';
+
+    let dsWarn = '';
+    if (three && res.assumed) dsWarn = `<div class="dswarn"><b>Per-phase limit not entered.</b> The check is using ${inv.kw} kW ÷ 3 = ${H.fmtKW(res.pl)} kW per phase, which may not match this inverter. Enter the datasheet values in the Inverter box above.</div>`;
+    else if (three && res.scaled) dsWarn = `<div class="dswarn"><b>Per-phase values are estimated.</b> They were scaled from the previous inverter's datasheet. Enter the ${inv.kw} kW model's own per-phase output, imbalance limit and peak values above, or pick a saved model.</div>`;
+
     const kpis = `<div class="kpis">
-      <div class="kpi ${res.over.length ? 'bad' : res.high.length ? 'warn' : ''}"><div class="k">Peak simultaneous load</div><div class="v">${H.fmtKW(res.peak)} <small>kW</small></div><div class="s">at ${H.ampm(res.peakHour)} – ${H.ampm(res.peakHour + 1)}</div></div>
-      <div class="kpi ${res.over.length ? 'bad' : res.high.length ? 'warn' : ''}"><div class="k">Inverter loading at peak</div><div class="v">${Math.round(res.peak / res.rated * 100)}<small>%</small></div><div class="s">of ${inv.kw} kW ${+inv.phase === 3 ? 'three' : 'single'}-phase</div></div>
-      <div class="kpi ${res.over.length ? 'bad' : ''}"><div class="k">Hours over rating</div><div class="v">${res.over.length}<small> h</small></div><div class="s">${res.high.length} h above ${inv.warn}%</div></div>
+      <div class="kpi ${res.totalOver.length ? 'bad' : res.high.length ? 'warn' : ''}"><div class="k">Peak simultaneous load</div><div class="v">${H.fmtKW(res.peak)} <small>kW</small></div><div class="s">at ${H.ampm(res.peakHour)} – ${H.ampm(res.peakHour + 1)}</div></div>
+      <div class="kpi ${res.totalOver.length ? 'bad' : ''}"><div class="k">Inverter loading at peak</div><div class="v">${Math.round(res.peak / res.rated * 100)}<small>%</small></div><div class="s">of ${inv.kw} kW ${three ? 'three' : 'single'}-phase</div></div>
+      ${three ? `<div class="kpi ${maxPh > res.pl + 0.01 ? 'bad' : maxPh > res.pl * inv.warn / 100 ? 'warn' : ''}"><div class="k">Highest phase load</div><div class="v">${H.fmtKW(maxPh)} <small>kW</small></div><div class="s">${kMaxPh} · ${Math.round(maxPh / res.pl * 100)}% of ${H.fmtKW(res.pl)} kW${res.assumed ? ' (assumed)' : ''}</div></div>` : ''}
+      <div class="kpi ${res.over.length ? 'bad' : ''}"><div class="k">Hours over a limit</div><div class="v">${res.over.length}<small> h</small></div><div class="s">${three ? `by limit: total ${res.totalOver.length} h · phase ${res.phaseOverAny.length} h · imbalance ${res.unbalHours.length} h` : `${res.high.length} h above ${inv.warn}%`}</div></div>
       <div class="kpi"><div class="k">Daily energy</div><div class="v">${res.energy.toFixed(1)} <small>kWh</small></div><div class="s">${res.eDay.toFixed(1)} day · ${res.eNight.toFixed(1)} night (6 PM–6 AM)</div></div>
       <div class="kpi"><div class="k">Connected load</div><div class="v">${(res.connected / 1000).toFixed(2)} <small>kW</small></div><div class="s">${inv.scope === 'backup' ? 'power-cut loads only' : 'all appliances'}</div></div>
     </div>`;
-    const tog = plan && plan.moves.length ? `<div class="seg" id="cMode"><button type="button" data-v="now" class="${!showAdj ? 'on' : ''}">Customer's times</button><button type="button" data-v="adj" class="${showAdj ? 'on' : ''}">Suggested times</button></div>` : '';
-    const chart = `<div class="card chartcard"><div class="chart-h"><h3>24-hour load profile${showAdj ? ' – with suggested time changes' : ''}</h3>${tog}</div>
-      <div class="chart" id="chart">${H.chartSVG(cres, inv, H.LIGHT_PAL, { hit: true, sel: selHour, w: Math.round(Math.max(360, Math.min(900, out.clientWidth - 34))), h: out.clientWidth < 600 ? 260 : 300 })}</div>
-      <div class="legend"><span><i style="background:#1f4e8c"></i>Within rating</span><span><i style="background:#d99a00"></i>Above ${inv.warn}%</span><span><i style="background:#c62828"></i>Over rating</span><span><i class="dash"></i>Inverter rating</span><span>Tap a bar for details</span></div>
+    const togT = plan && plan.moves.length ? `<div class="seg" id="cMode"><button type="button" data-v="now" class="${!showAdj ? 'on' : ''}">Customer's times</button><button type="button" data-v="adj" class="${showAdj ? 'on' : ''}">Suggested times</button></div>` : '';
+    const togV = three ? `<div class="seg" id="cView"><button type="button" data-v="total" class="${chartView === 'total' ? 'on' : ''}">Total</button><button type="button" data-v="phase" class="${chartView === 'phase' ? 'on' : ''}">Per phase</button></div>` : '';
+    const copt = { hit: true, sel: selHour, w: Math.round(Math.max(360, Math.min(900, out.clientWidth - 34))), h: out.clientWidth < 600 ? 260 : 300 };
+    const legend = chartView === 'phase'
+      ? `<span><i class="lgL1"></i>L1</span><span><i class="lgL2"></i>L2</span><span><i class="lgL3"></i>L3</span><span><i style="background:#c62828"></i>Over the per-phase limit</span><span><i class="dash"></i>Per-phase limit</span>`
+      : `<span><i style="background:#1f4e8c"></i>Within limits</span><span><i style="background:#d99a00"></i>Above ${inv.warn}%</span><span><i style="background:#c62828"></i>Over a limit${three ? ' (total, phase or imbalance)' : ''}</span><span><i class="dash"></i>Inverter rating</span>`;
+    const chart = `<div class="card chartcard"><div class="chart-h"><h3>${chartView === 'phase' ? 'Load per phase' : '24-hour load profile'}${showAdj ? ' – suggested times' : ''}</h3>${togV}${togT}</div>
+      <div class="chart" id="chart">${chartView === 'phase' ? H.phaseChartSVG(cres, inv, H.LIGHT_PAL, copt) : H.chartSVG(cres, inv, H.LIGHT_PAL, copt)}</div>
+      <div class="legend">${legend}<span>Tap a bar for details</span></div>
       <div id="hdetail"></div></div>`;
 
-    // Option A
+    // ---- Option C: phases (three-phase only) ----
+    let optC = '';
+    if (three) {
+      const pOver = res.phaseOverAny.length || res.unbalHours.length;
+      if (phasePlan && phasePlan.moves.length) {
+        const pr = phasePlan.result, prMax = Math.max(pr.peakPh.L1, pr.peakPh.L2, pr.peakPh.L3);
+        const fixedPh = !pr.phaseOverAny.length && !pr.unbalHours.length;
+        optC = `<p>${pOver ? 'Move these single-phase circuits to another phase:' : 'Optional – spreads the load so no phase is above ' + inv.warn + '%:'}</p>
+          <ul class="moves">${phasePlan.moves.map(m => `<li><b>${esc(m.name)}</b> (${kwTxt(m.p)})<br>${m.from}<span class="arrow">→</span>${m.to}</li>`).join('')}</ul>
+          <p>${fixedPh ? `<span class="pill ok">${pOver ? 'Removes every phase overload' : 'Phases within ' + inv.warn + '%'}</span>` : `<span class="pill high">Partly solves it</span>`} Highest phase ${H.fmtKW(prMax)} kW (${Math.round(prMax / res.pl * 100)}% of ${H.fmtKW(res.pl)} kW)${pr.totalOver.length ? `; total load still over in ${hourRange(pr.totalOver)}` : ''}.</p>
+          <p class="small muted">Only where the house wiring allows the circuit to be moved. Mark appliances “Phase fixed” in the Appliances tab if they can't be moved.</p>
+          <button class="btn primary sm" type="button" id="applyPhases">Apply these phase changes</button>`;
+      } else if (pOver) {
+        optC = `<p>No phase change fixes this. ${res.tooBig.length ? '' : 'The overloaded phases carry appliances marked “Phase fixed”, or moving any circuit overloads another phase.'}</p>`;
+      } else optC = `<p>Every phase stays within ${H.fmtKW(res.pl)} kW${res.unbal != null ? ` and the imbalance stays within ${H.fmtKW(res.unbal)} kW` : ''}. No changes needed.</p>`;
+      if (res.tooBig.length) optC += `<div class="dswarn" style="margin-top:8px">${res.tooBig.map(t => `<b>${esc(t.name)}</b> (${kwTxt(t.p)}) is bigger than the ${H.fmtKW(res.pl)} kW per-phase limit, so it cannot run on any single phase of this inverter.`).join('<br>')} It needs an inverter with at least ${H.fmtKW(Math.max(...res.tooBig.map(t => t.p)))} kW per phase, or a three-phase version of the appliance.</div>`;
+      if (undoPhases) optC += `<p class="small" style="margin-top:8px">Phase changes applied. <button class="btn sm" type="button" id="undoPhases">Undo</button></p>`;
+    }
+    // ---- Option A: times ----
     let optA;
     if (!res.over.length) optA = `<p>No overloads with the customer's times, so no changes are needed.</p>`;
     else if (plan && plan.moves.length) {
       const g = H.groupMoves(plan.moves);
       optA = `<p>Move these flexible appliances out of the overloaded hours:</p><ul class="moves">${g.map(x => `<li><b>${esc(x.name)}</b> (${H.fmtKW(x.p)} kW)<br>${esc(H.slotsText(x.from, '12'))}<span class="arrow">→</span>${esc(H.slotsText(x.to, '12'))}</li>`).join('')}</ul>
         <p>${plan.resolved ? `<span class="pill ok">Removes every overload</span> New peak ${H.fmtKW(plan.result.peak)} kW (${Math.round(plan.result.peak / res.rated * 100)}%).`
-          : `<span class="pill high">Partly solves it</span> Still over in ${hourRange(plan.result.over)}. Mark more appliances as flexible or choose a larger inverter.`}</p>
+          : `<span class="pill high">Partly solves it</span> Still over in ${hourRange(plan.result.over)}. Mark more appliances as flexible${three ? ', move circuits between phases' : ''} or choose a larger inverter.`}</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" type="button" id="applyMoves">Apply these changes to the schedule</button></div>`;
     } else {
-      optA = `<p>No time change found. None of the appliances running in ${hourRange(res.over)} is marked as flexible, or no other hour has enough spare capacity.</p><p class="muted small">Ask the customer which appliances they could use at another time, mark them “Time can be changed”, and check again.</p>`;
+      optA = `<p>No time change found. None of the appliances running in ${hourRange(res.over)} is marked as flexible, or no other hour has enough spare capacity${three ? ' on that phase' : ''}.</p><p class="muted small">Ask the customer which appliances they could use at another time, mark them “Time can be changed”, and check again.</p>`;
     }
     if (undoApps) optA += `<p class="small" style="margin-top:8px">Time changes applied. <button class="btn sm" type="button" id="undoMoves">Undo</button></p>`;
-    // Option B
-    const same = rec.pick && Math.abs(rec.pick.total - inv.kw) < 1e-9;
-    const drv = rec.driver === 'surge' ? 'motor starting surge' : rec.driver === 'phase' ? 'the most loaded phase' : 'the running peak';
-    let optB = `<div class="big tnum">${esc(rec.label)}</div><p class="small muted">Needs at least ${rec.req.toFixed(2)} kW: ${drv}${inv.margin ? ` plus ${inv.margin}% margin` : ''}.</p>`;
-    if (same) optB += `<p><span class="pill ok">Selected size matches</span> The ${inv.kw} kW inverter is the recommended size for these times of use.</p>`;
-    else if (rec.pick && rec.pick.total < inv.kw) optB += `<p>The selected ${inv.kw} kW is larger than needed. ${esc(rec.label)} would cover the customer's times with the margin.</p>`;
-    else optB += `<p>Choose a larger inverter to run the appliances at the customer's preferred times without changes.</p>`;
-    if (rec.pick && !same) optB += `<button class="btn primary sm" type="button" id="useRec" data-kw="${rec.pick.n === 1 ? rec.pick.size : rec.pick.total}">Check with ${esc(rec.pick.n === 1 ? rec.pick.size + ' kW' : rec.pick.total + ' kW')}</button>`;
+    // ---- Option B: inverter ----
+    const same = rec.pick && Math.abs(rec.pick.total - inv.kw) < 1e-9 && (!rec.pick.model || rec.pick.model.name === inv.model || !inv.model);
+    const nd = rec.need;
+    let optB = `<div class="big tnum">${esc(rec.label)}</div>
+      <p class="small muted">Set by ${rec.driverText}. Needs ${H.fmtKW(nd.run * 1000)} kW total${three ? `, ${H.fmtKW(nd.phase * 1000)} kW on one phase` : ''}${inv.margin ? ` (incl. ${inv.margin}% margin)` : ''}${three && res.unbal != null ? `, imbalance ${H.fmtKW(nd.unbal * 1000)} kW` : ''}, starting peak ${H.fmtKW(nd.surge * 1000)} kW${three ? ` total / ${H.fmtKW(nd.phasePeak * 1000)} kW on one phase` : ''}.</p>`;
+    if (rec.basis === 'library') optB += `<p class="small">Chosen from your saved inverter datasheets.</p>`;
+    else if (three) optB += `<p class="small">No saved three-phase models, so this assumes larger sizes have the same per-phase ratio as the selected datasheet (${H.fmtKW(res.pl)} kW per phase for ${inv.kw} kW). Confirm the per-phase rating in the new model's datasheet, or save your models to choose from them.</p>`;
+    if (same) optB += `<p><span class="pill ok">Selected inverter matches</span> The ${inv.kw} kW inverter is the recommended size for these times of use.</p>`;
+    else if (rec.pick && rec.pick.total < inv.kw) optB += `<p>The selected ${inv.kw} kW is larger than needed for these times of use.</p>`;
+    else if (rec.pick) optB += `<p>Choose this inverter to run the appliances at the customer's preferred times${three ? ' and on the current phases' : ''} without changes.</p>`;
+    if (rec.pick && !same) optB += `<button class="btn primary sm" type="button" id="useRec">Check with ${esc(rec.pick.model ? rec.pick.model.name : (rec.pick.n === 1 ? rec.pick.size + ' kW' : rec.pick.total + ' kW'))}</button>`;
+    if (recPhase && recPhase.pick && rec.pick && recPhase.pick.total < rec.pick.total) optB += `<p class="small" style="margin-top:8px">With the phase changes in option C, <b>${esc(recPhase.label)}</b> is enough.</p>`;
     if (recAfter && recAfter.pick && rec.pick && recAfter.pick.total < rec.pick.total) optB += `<p class="small" style="margin-top:8px">With the time changes in option A, <b>${esc(recAfter.label)}</b> is enough.</p>`;
 
-    const recs = `<div class="recs"><div class="card rec"><h3><span class="tag">A</span>Change times of use</h3>${optA}</div><div class="card rec"><h3><span class="tag">B</span>Inverter size</h3>${optB}</div></div>`;
+    const cardC = three ? `<div class="card rec"><h3><span class="tag">C</span>Balance the phases</h3>${optC}</div>` : '';
+    const recs = `<div class="recs">${cardC}<div class="card rec"><h3><span class="tag">A</span>Change times of use</h3>${optA}</div><div class="card rec"><h3><span class="tag">B</span>Inverter size</h3>${optB}</div></div>`;
 
-    // notes: surge, phases, energy
+    // ---- notes ----
     let notes = '';
     const sN = res.surge.map(h => res.hours[h]).sort((a, b) => b.surgePeak - a.surgePeak).slice(0, 4);
-    if (sN.length) notes += `<div class="card" style="margin-top:12px"><b>Starting surge</b><ul>${sN.map(st => `<li>${H.ampm(st.h)}: starting the ${esc(st.extraName)} while ${H.fmtKW(st.total)} kW is running needs about ${H.fmtKW(st.surgePeak)} kW for a few seconds. Surge capability is ${(inv.kw * inv.surge).toFixed(1)} kW (${inv.surge} × ${inv.kw} kW).</li>`).join('')}</ul></div>`;
-    if (res.three) {
-      const ph = res.peakPh, pl = res.pl;
-      notes += `<div class="card" style="margin-top:12px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="margin-right:auto">Phase loading (limit ${H.fmtKW(pl)} kW per phase)</b><button class="btn sm" type="button" id="balance">Auto-balance phases</button></div>
-        <div class="phases">${['L1', 'L2', 'L3'].map(k => { const r = ph[k] / pl, c = r > 1 ? 'over' : r > inv.warn / 100 ? 'high' : ''; return `<div class="ph"><span class="lbl">${k} peak</span><br><b class="tnum">${H.fmtKW(ph[k])}</b> kW <span class="muted small">${Math.round(r * 100)}%</span><div class="bar"><i class="${c}" style="width:${Math.min(100, r * 100)}%"></i></div></div>`; }).join('')}</div>
+    if (sN.length) notes += `<div class="card" style="margin-top:12px"><b>Starting surge</b><ul>${sN.map(st => {
+      if (st.surgePh && st.surgePh.length) { const k = st.surgePh[0]; return `<li>${H.ampm(st.h)}, ${k}: starting the ${esc(st.xname[k])} while ${H.fmtKW(st.ph[k])} kW runs on ${k} needs about ${H.fmtKW(st.ph[k] + st.xph[k])} kW for a few seconds; per-phase peak capability is ${H.fmtKW(res.ppk)} kW.</li>`; }
+      return `<li>${H.ampm(st.h)}: starting the ${esc(st.extraName)} while ${H.fmtKW(st.total)} kW is running needs about ${H.fmtKW(st.surgePeak)} kW for a few seconds. Surge capability is ${(inv.kw * inv.surge).toFixed(1)} kW (${inv.surge} × ${inv.kw} kW).</li>`;
+    }).join('')}</ul></div>`;
+    if (three) {
+      notes += `<div class="card" style="margin-top:12px"><b>Phase loading</b> <span class="muted small">limit ${H.fmtKW(res.pl)} kW per phase${res.assumed ? ' (assumed rated ÷ 3)' : ' (datasheet)'}${res.unbal != null ? ` · imbalance limit ${H.fmtKW(res.unbal)} kW` : ' · no imbalance limit entered'}</span>
+        <div class="phrow">${H.PH.map(k => { const r = res.peakPh[k] / res.pl, c = r > 1 + 1e-6 ? 'over' : r > inv.warn / 100 ? 'high' : ''; return `<div class="ph"><span class="lbl">${k} peak</span><br><b class="tnum">${H.fmtKW(res.peakPh[k])}</b> kW <span class="muted small">${Math.round(r * 100)}% · ${H.ampm(res.peakPhHour[k])}</span><div class="bar"><i class="${c}" style="width:${Math.min(100, r * 100)}%"></i></div><span class="small ${res.phOver[k].length ? '' : 'muted'}">${res.phOver[k].length ? `<b style="color:var(--bad)">over in ${res.phOver[k].length} h</b>` : 'within limit'}</span></div>`; }).join('')}
+        <div class="ph"><span class="lbl">Max imbalance</span><br><b class="tnum">${H.fmtKW(res.peakImb)}</b> kW <span class="muted small">${res.unbal != null ? Math.round(res.peakImb / res.unbal * 100) + '% of limit' : 'no limit'}</span>${res.unbal != null ? `<div class="bar"><i class="${res.unbalHours.length ? 'over' : ''}" style="width:${Math.min(100, res.peakImb / res.unbal * 100)}%"></i></div>` : ''}<span class="small muted">highest minus lowest phase</span></div></div>
         <p class="small muted" style="margin:0">Set each appliance's phase in the Appliances tab to match the house wiring.</p></div>`;
     }
-    const tbl = `<div class="tblwrap"><table class="ht"><thead><tr><th>Time</th><th>Load (kW)</th><th>Loading</th>${res.three ? '<th>L1</th><th>L2</th><th>L3</th>' : ''}<th>Status</th><th>Appliances operating</th></tr></thead><tbody>${cres.hours.map(st => {
+    const tbl = `<div class="tblwrap"><table class="ht"><thead><tr><th>Time</th><th>Load (kW)</th><th>Loading</th>${three ? '<th>L1</th><th>L2</th><th>L3</th><th>Imbal.</th>' : ''}<th>Status</th><th>Appliances operating</th></tr></thead><tbody>${cres.hours.map(st => {
       const pct = st.total / cres.rated; const c = st.status;
-      return `<tr class="${c}${selHour === st.h ? ' sel' : ''}" data-h="${st.h}"><td>${H.hh(st.h)}–${H.hh(st.h + 1)}</td><td><b>${H.fmtKW(st.total)}</b></td>
-        <td><div class="lb"><span>${Math.round(pct * 100)}%</span><div class="bar"><i class="${c === 'ok' ? '' : c}" style="width:${Math.min(100, pct * 100)}%"></i></div></div></td>
-        ${res.three ? ['L1', 'L2', 'L3'].map(k => `<td>${H.fmtKW(st.ph[k])}</td>`).join('') : ''}
-        <td><span class="pill ${c}">${c === 'over' ? 'OVERLOAD' : c === 'high' ? 'HIGH' : 'OK'}</span>${st.surgeOver ? ' <span class="pill high" title="Starting surge">Surge</span>' : ''}</td>
-        <td class="on">${st.on.map(o => `${esc(o.name)}${o.n > 1 ? ' ×' + o.n : ''} (${o.p >= 1000 ? (o.p / 1000).toFixed(2) + ' kW' : Math.round(o.p) + ' W'})`).join(', ') || '—'}</td></tr>`;
+      return `<tr class="${c}${selHour === st.h ? ' sel' : ''}" data-h="${st.h}"><td>${H.hh(st.h)}–${H.hh(st.h + 1)}</td><td><b class="${st.why.includes('total') ? 'tbad' : ''}">${H.fmtKW(st.total)}</b></td>
+        <td><div class="lb"><span>${Math.round(pct * 100)}%</span><div class="bar"><i class="${st.why.includes('total') ? 'over' : pct > inv.warn / 100 ? 'high' : ''}" style="width:${Math.min(100, pct * 100)}%"></i></div></div></td>
+        ${three ? H.PH.map(k => `<td class="${st.why.includes(k) ? 'pov' : ''}">${H.fmtKW(st.ph[k])}</td>`).join('') + `<td class="${st.why.includes('unbal') ? 'pov' : ''}">${H.fmtKW(st.imb)}</td>` : ''}
+        <td><span class="pill ${c}">${st.label}</span>${st.surgeOver ? ' <span class="pill high" title="Starting surge">Surge</span>' : ''}</td>
+        <td class="on">${st.on.map(o => `${esc(o.name)}${o.n > 1 ? ' ×' + o.n : ''} (${kwTxt(o.p)}${three ? ', ' + o.ph : ''})`).join(', ') || '—'}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 
-    out.innerHTML = `<div class="verdict ${v.cls}"><div class="ico">${v.ico}</div><div><h3>${esc(v.h)}</h3><p>${esc(v.p)}</p></div></div>${kpis}${chart}${recs}${notes}
+    out.innerHTML = `${dsWarn}<div class="verdict ${v.cls}"><div class="ico">${v.ico}</div><div><h3>${esc(v.h)}</h3><p>${esc(v.p)}</p></div></div>${kpis}${chart}${recs}${notes}
       <div class="sec-h"><h2>Hour by hour</h2><p>${showAdj ? 'With suggested time changes' : "Customer's times of use"}</p></div>${tbl}`;
     if (selHour != null) renderHourDetail(cres);
 
     $('#cMode')?.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; chartMode = b.dataset.v; renderAnalysis(); });
+    $('#cView')?.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; chartView = b.dataset.v; renderAnalysis(); });
     $('#chart').addEventListener('click', e => { const r = e.target.closest('[data-h]'); if (!r) return; selHour = +r.dataset.h; renderAnalysis(); });
     out.querySelector('.ht tbody').addEventListener('click', e => { const r = e.target.closest('tr'); if (!r) return; selHour = +r.dataset.h; renderAnalysis(); document.getElementById('chart').scrollIntoView({ behavior: 'smooth', block: 'center' }); });
     $('#applyMoves')?.addEventListener('click', () => {
@@ -578,15 +715,33 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       P.appliances.forEach(a => { const n = byId.get(a.id); if (n) a.hrs = n.hrs.slice(); });
       chartMode = 'now'; changed(); toast('Time changes applied to the schedule');
     });
-    $('#undoMoves')?.addEventListener('click', () => { P.appliances = undoApps.map(H.normalise); undoApps = null; changed(); toast('Schedule restored'); });
-    $('#useRec')?.addEventListener('click', e => { P.inv.kw = +e.target.dataset.kw; renderInverter(); changed(); toast(`Now checking with ${P.inv.kw} kW`); });
-    $('#balance')?.addEventListener('click', () => { H.autoBalance(P.appliances, P.inv); changed(); toast('Phases balanced'); });
+    $('#undoMoves')?.addEventListener('click', () => { P.appliances = undoApps.map(H.normalise); undoApps = null; undoPhases = null; changed(); toast('Schedule restored'); });
+    $('#applyPhases')?.addEventListener('click', () => {
+      undoPhases = P.appliances.map(a => [a.id, a.ph]);
+      const m = new Map(phasePlan.apps.map(a => [a.id, a.ph]));
+      P.appliances.forEach(a => { if (m.has(a.id)) a.ph = m.get(a.id); });
+      changed(); toast('Phase changes applied');
+    });
+    $('#undoPhases')?.addEventListener('click', () => { const m = new Map(undoPhases); P.appliances.forEach(a => { if (m.has(a.id)) a.ph = m.get(a.id); }); undoPhases = null; changed(); toast('Phases restored'); });
+    $('#useRec')?.addEventListener('click', () => {
+      const pk = rec.pick;
+      if (pk.model && pk.n === 1) applyModel(pk.model);
+      else if (pk.model) { applyModel(pk.model); const n = pk.n; P.inv.kw = pk.total; ['phaseKw', 'unbalKw', 'phasePeakKw'].forEach(k => { if (H.num(P.inv[k], 0) > 0) P.inv[k] = +(H.num(P.inv[k]) * n).toFixed(3); }); P.inv.model = ''; }
+      else {
+        const f = pk.total / P.inv.kw;
+        if (three) ['phaseKw', 'unbalKw', 'phasePeakKw'].forEach(k => { if (H.num(P.inv[k], 0) > 0) P.inv[k] = +(H.num(P.inv[k]) * f).toFixed(3); });
+        P.inv.scaled = three && !H.limits(P.inv).assumed; P.inv.kw = pk.total; P.inv.model = '';
+      }
+      renderInverter(); changed(); toast(`Now checking with ${rec.label}`);
+    });
   }
   function renderHourDetail(cres) {
     const st = cres.hours[selHour]; if (!st) return;
     const over = st.total - cres.rated;
-    $('#hdetail').innerHTML = `<div class="hdetail"><b>${H.ampm(st.h)} – ${H.ampm(st.h + 1)}</b> · ${H.fmtKW(st.total)} kW (${Math.round(st.total / cres.rated * 100)}%) ${over > 0 ? `<span class="pill over">over by ${H.fmtKW(over)} kW</span>` : ''}
-      <ul>${st.on.map(o => `<li>${esc(o.name)}${o.n > 1 ? ' ×' + o.n : ''} – ${o.p >= 1000 ? (o.p / 1000).toFixed(2) + ' kW' : Math.round(o.p) + ' W'}</li>`).join('') || '<li>Nothing running</li>'}</ul></div>`;
+    const three = cres.three;
+    const byPh = three ? H.PH.map(k => `<span class="pill ${st.why.includes(k) ? 'over' : 'info'}">${k} ${H.fmtKW(st.ph[k])} kW</span>`).join(' ') : '';
+    $('#hdetail').innerHTML = `<div class="hdetail"><b>${H.ampm(st.h)} – ${H.ampm(st.h + 1)}</b> · ${H.fmtKW(st.total)} kW (${Math.round(st.total / cres.rated * 100)}%) ${over > 0 ? `<span class="pill over">over by ${H.fmtKW(over)} kW</span>` : ''} ${byPh}
+      <ul>${st.on.map(o => `<li>${esc(o.name)}${o.n > 1 ? ' ×' + o.n : ''} – ${kwTxt(o.p)}${three ? ` · ${o.ph}` : ''}</li>`).join('') || '<li>Nothing running</li>'}</ul></div>`;
   }
 
   // ---------- files ----------
@@ -607,7 +762,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
         p.appliances = (d.appliances || []).map(H.normalise);
         p.formSubmitted = d.submitted || '';
         if (/three/i.test(p.customer.supply || '')) { p.inv.phase = 3; p.inv.kw = 10; H.autoBalance(p.appliances, p.inv); }
-        P = normProject(p); undoApps = null; selHour = null; chartMode = 'now'; openSet.clear();
+        P = normProject(p); undoApps = null; undoPhases = null; selHour = null; chartMode = 'now'; openSet.clear();
         persist(); updateLive(); show('ana');
         toast(`Loaded ${P.appliances.length} appliances for ${P.customer.name || 'customer'}`);
       };
@@ -619,7 +774,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       return;
     }
     if (d && d.type === H.PROJECT_TYPE) {
-      P = normProject(d); undoApps = null; selHour = null; openSet.clear(); persist(); updateLive(); show('ana'); toast('Project opened'); return;
+      P = normProject(d); undoApps = null; undoPhases = null; selHour = null; openSet.clear(); persist(); updateLive(); show('ana'); toast('Project opened'); return;
     }
     throw new Error('This file is not a Regen load form or project file.');
   }
@@ -636,10 +791,10 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
         ${x.id === P.id ? '<span class="pill info">Open</span>' : '<button class="btn sm" data-o>Open</button>'}<button class="btn sm danger" data-d aria-label="Delete">Delete</button></div>`).join('') || '<p class="muted">No saved projects yet.</p>'}</div>
       <p class="hint">Projects are stored in this browser only. Use “Save file” to keep a copy or share it with the team.</p><div class="acts"><button class="btn" data-close>Close</button></div>`);
     m.addEventListener('click', e => {
-      if (e.target.id === 'pNew') { P = newProject(); persist(); undoApps = null; openSet.clear(); m.remove(); updateLive(); show('cust'); toast('New project started'); return; }
+      if (e.target.id === 'pNew') { P = newProject(); persist(); undoApps = null; undoPhases = null; openSet.clear(); m.remove(); updateLive(); show('cust'); toast('New project started'); return; }
       const row = e.target.closest('.pi'); if (!row) return;
       const id = row.dataset.id;
-      if (e.target.closest('[data-o]')) { const p = H.store.get('p_' + id); if (p) { P = normProject(p); undoApps = null; openSet.clear(); persist(); m.remove(); updateLive(); show('ana'); } return; }
+      if (e.target.closest('[data-o]')) { const p = H.store.get('p_' + id); if (p) { P = normProject(p); undoApps = null; undoPhases = null; openSet.clear(); persist(); m.remove(); updateLive(); show('ana'); } return; }
       const del = e.target.closest('[data-d]');
       if (del) {
         if (del.dataset.confirm !== '1') { del.dataset.confirm = '1'; del.textContent = 'Confirm delete'; return; }
@@ -668,8 +823,11 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     const inv = P.inv, c = P.customer, three = +inv.phase === 3;
     const res = H.analyse(P.appliances, inv);
     const plan = res.over.length ? H.planShift(P.appliances, inv) : null;
-    const rec = H.recommendInverter(res, inv, P.sizes[inv.phase]);
-    const recAfter = plan && plan.moves.length ? H.recommendInverter(plan.result, inv, P.sizes[inv.phase]) : null;
+    const mlib = models();
+    const rec = H.recommendInverter(res, inv, P.sizes[inv.phase], mlib);
+    const recAfter = plan && plan.moves.length ? H.recommendInverter(plan.result, inv, P.sizes[inv.phase], mlib) : null;
+    const phasePlan = three ? H.planPhases(P.appliances, inv) : null;
+    const recPhase = phasePlan && phasePlan.moves.length ? H.recommendInverter(phasePlan.result, inv, P.sizes[inv.phase], mlib) : null;
     const scoped = P.appliances.filter(a => H.inScope(a, inv));
     const wb = new XW.Workbook({ title: 'Hybrid system load calculation', creator: P.prep.by || 'Regen Renewables', company: H.COMPANY.name });
     const NAVY = '10264A', BLUE = '1F4E8C', GOLD = 'E0A526', LINE = 'B8C2D3', MUTED = '5B6680';
@@ -720,7 +878,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     // ---- layout of the profile sheets (needed by Summary formulas) ----
     const n = scoped.length;
     const L = { r0: 4, cTotW: n + 1, cTotKW: n + 2, cRated: n + 3, cLoad: n + 4 };
-    if (three) { L.cL1 = n + 5; L.cL2 = n + 6; L.cL3 = n + 7; L.cPL = n + 8; L.cStatus = n + 9; } else L.cStatus = n + 5;
+    if (three) { L.cL1 = n + 5; L.cL2 = n + 6; L.cL3 = n + 7; L.cPL = n + 8; L.cImb = n + 9; L.cStatus = n + 10; } else L.cStatus = n + 5;
     L.cSurge = L.cStatus + 1; L.cOn = L.cStatus + 2;
     const PROF = "'24h Load Profile'";
     const colR = (cc) => `${PROF}!$${XW.colName(cc)}$${L.r0 + 1}:$${XW.colName(cc)}$${L.r0 + 24}`;
@@ -748,21 +906,31 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     kv('Prepared by / reference', [P.prep.by, P.prep.ref, P.prep.date].filter(Boolean).join(' · ') || '—');
     r++;
     sec('SELECTED INVERTER  (yellow cells are inputs – change them to re-check)');
+    if (inv.model) kv('Inverter model (saved datasheet)', inv.model);
     kv('Inverter output', three ? 'Three-phase' : 'Single-phase');
     const rRated = kv('Rated output power (kW)', inv.kw, S.inp);
-    const rPL = three ? kv('Max output per phase (kW)', H.phaseLimitW(inv) / 1000, S.inp) : null;
     const rSurge = kv('Surge capability (× rated, ~10 s)', inv.surge, S.inp);
+    const LIM = H.limits(inv);
+    const rPL = three ? kv(LIM.assumed ? 'Per-phase output (kW) – ASSUMED rated ÷ 3' : LIM.scaled ? 'Per-phase output (kW) – ESTIMATED' : 'Per-phase continuous output (kW) – datasheet', LIM.pl / 1000, S.inp) : null;
+    const rUB = three ? kv('Max phase imbalance (kW) – blank = no limit', LIM.unbal == null ? null : LIM.unbal / 1000, S.inp) : null;
+    const rPPK = three ? kv('Per-phase peak capability (kW, ~10 s)', LIM.ppk / 1000, S.inp) : null;
     const rWarn = kv('High-loading warning level', inv.warn / 100, S.inpPct);
     kv('Sizing margin used for recommendation', inv.margin / 100, { ...S.v, numFmt: '0%' });
     kv('Loads checked', inv.scope === 'backup' ? 'Power-cut (backup) loads only' : 'All appliances');
-    const RATED = `Summary!$C$${rRated + 1}`, WARN = `Summary!$C$${rWarn + 1}`, PL = rPL != null ? `Summary!$C$${rPL + 1}` : null, SURGE = `Summary!$C$${rSurge + 1}`;
+    const RATED = `Summary!$C$${rRated + 1}`, WARN = `Summary!$C$${rWarn + 1}`, PL = rPL != null ? `Summary!$C$${rPL + 1}` : null, UB = rUB != null ? `Summary!$C$${rUB + 1}` : null, SURGE = `Summary!$C$${rSurge + 1}`; void SURGE; void rPPK;
     r++;
     sec('RESULTS – 24-HOUR LOAD PROFILE');
     const kwR = colR(L.cTotKW), stR = colR(L.cStatus), tR = colR(0);
     const rPeak = kv('Peak simultaneous load (kW)', +(res.peak / 1000).toFixed(3), S.res, `MAX(${kwR})`);
     kv('Time of peak', `${H.hh(res.peakHour)}–${H.hh(res.peakHour + 1)}`, S.resTxt, `INDEX(${tR},MATCH(MAX(${kwR}),${kwR},0))`);
     kv('Inverter loading at peak', res.peak / res.rated, S.resPct, `C${rPeak + 1}/${RATED}`);
-    kv('Hours over the inverter rating', res.over.length, { ...S.resTxt, numFmt: '0' }, `COUNTIF(${stR},"OVERLOAD")`);
+    kv('Hours over the inverter rating', res.totalOver.length, { ...S.resTxt, numFmt: '0' }, `COUNTIF(${stR},"OVERLOAD")`);
+    if (three) {
+      H.PH.forEach(k => { const cr = colR(L['c' + k]); kv(`Peak load on ${k} (kW)`, +(res.peakPh[k] / 1000).toFixed(3), S.res, `MAX(${cr})`); });
+      kv('Largest imbalance between phases (kW)', +(res.peakImb / 1000).toFixed(3), S.res, `MAX(${colR(L.cImb)})`);
+      kv('Hours with a phase over its limit', res.hours.filter(x => x.label === 'PHASE OVERLOAD').length, { ...S.resTxt, numFmt: '0' }, `COUNTIF(${stR},"PHASE OVERLOAD")`);
+      kv('Hours with imbalance over the limit', res.hours.filter(x => x.label === 'UNBALANCE').length, { ...S.resTxt, numFmt: '0' }, `COUNTIF(${stR},"UNBALANCE")`);
+    }
     kv('Hours above warning level', res.high.length, { ...S.resTxt, numFmt: '0' }, `COUNTIF(${stR},"HIGH")`);
     const rAppTot = 4 + P.appliances.length;   // Appliances sheet total row (0-based)
     kv('Connected load (kW)', +(res.connected / 1000).toFixed(3), S.res, `Appliances!$H$${rAppTot + 1}/1000`);
@@ -775,21 +943,35 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     sec('ASSESSMENT');
     sm.set(r, 1, v.h, S[v.cls]); sm.style(r, 1, r, 15, S[v.cls]); sm.merge(r, 1, r, 15); sm.height(r, 24); r++;
     sm.set(r, 1, v.p, S.txt); sm.style(r, 1, r, 15, S.txt); sm.merge(r, 1, r, 15); sm.height(r, est(v.p, 150)); r++;
+    const aline = (t, st = S.txt) => { sm.set(r, 1, t, st); sm.style(r, 1, r, 15, st); sm.merge(r, 1, r, 15); sm.height(r, est(t, 150)); r++; };
+    if (three && (LIM.assumed || LIM.scaled)) aline(LIM.assumed ? `Per-phase limit not taken from a datasheet: the check assumes ${inv.kw} kW ÷ 3 = ${H.fmtKW(LIM.pl)} kW per phase. Enter the datasheet value in the yellow cell to re-check.` : `Per-phase values are estimated by scaling another inverter's datasheet. Confirm them on the ${inv.kw} kW model's datasheet.`, S.high);
     if (res.surge.length) {
       const sN = res.surge.map(h => res.hours[h]).sort((a, b) => b.surgePeak - a.surgePeak)[0];
-      const t = `Starting surge: at ${H.ampm(sN.h)}, starting the ${sN.extraName} while ${H.fmtKW(sN.total)} kW is running needs about ${H.fmtKW(sN.surgePeak)} kW for a few seconds, above the ${(inv.kw * inv.surge).toFixed(1)} kW surge capability. Affected hours: ${hourRange(res.surge)}.`;
-      sm.set(r, 1, t, S.txt); sm.style(r, 1, r, 15, S.txt); sm.merge(r, 1, r, 15); sm.height(r, est(t, 150)); r++;
+      const k = sN.surgePh && sN.surgePh[0];
+      aline(k ? `Starting surge: at ${H.ampm(sN.h)} on ${k}, starting the ${sN.xname[k]} while ${H.fmtKW(sN.ph[k])} kW runs on ${k} needs about ${H.fmtKW(sN.ph[k] + sN.xph[k])} kW for a few seconds, above the ${H.fmtKW(LIM.ppk)} kW per-phase peak capability. Affected hours: ${hourRange(res.surge)}.`
+        : `Starting surge: at ${H.ampm(sN.h)}, starting the ${sN.extraName} while ${H.fmtKW(sN.total)} kW is running needs about ${H.fmtKW(sN.surgePeak)} kW for a few seconds, above the ${(inv.kw * inv.surge).toFixed(1)} kW surge capability. Affected hours: ${hourRange(res.surge)}.`);
     }
+    if (three) res.tooBig.forEach(t => aline(`${t.name} (${H.fmtKW(t.p)} kW) is bigger than the ${H.fmtKW(LIM.pl)} kW per-phase limit and cannot run on any single phase of this inverter. It needs at least ${H.fmtKW(t.p)} kW per phase, or a three-phase version of the appliance.`));
     r++;
     sec('RECOMMENDATIONS');
     const line = (t, st = S.txt) => { sm.set(r, 1, t, st); sm.style(r, 1, r, 15, st); sm.merge(r, 1, r, 15); sm.height(r, est(t, 150)); r++; };
+    if (three) {
+      if (phasePlan && phasePlan.moves.length) {
+        const pr = phasePlan.result, ok = !pr.phaseOverAny.length && !pr.unbalHours.length;
+        line(`Option C – Balance the phases (where the wiring allows): ${ok ? 'these changes remove every phase overload' : 'these changes reduce the phase overload but do not remove it'}; highest phase ${H.fmtKW(Math.max(pr.peakPh.L1, pr.peakPh.L2, pr.peakPh.L3))} kW of ${H.fmtKW(LIM.pl)} kW. See "Suggested phase" on the Appliances sheet.`);
+        phasePlan.moves.forEach(m => line(`      • ${m.name} (${H.fmtKW(m.p)} kW): move from ${m.from} to ${m.to}`));
+      } else if (res.phaseOverAny.length || res.unbalHours.length) line('Option C – Balance the phases: no phase change removes the overload (appliances marked "phase fixed", or each move overloads another phase).');
+      else line(`Option C – Phases: every phase stays within ${H.fmtKW(LIM.pl)} kW; no changes needed.`);
+    }
     if (!res.over.length) line('Option A – Times of use: no overload with the customer\'s times; no changes needed.');
     else if (plan && plan.moves.length) {
       line(`Option A – Change times of use (flexible appliances): ${plan.resolved ? 'these changes remove every overload' : 'these changes reduce the overload but do not remove it; still over in ' + hourRange(plan.result.over)}. New peak ${H.fmtKW(plan.result.peak)} kW. See the "Adjusted Profile" sheet.`);
       H.groupMoves(plan.moves).forEach(g => line(`      • ${g.name} (${H.fmtKW(g.p)} kW): move from ${H.slotsText(g.from)} to ${H.slotsText(g.to)}`));
     } else line(`Option A – Change times of use: not possible with the current answers – none of the appliances running in ${hourRange(res.over)} is marked as flexible, or no other hour has spare capacity.`);
     const same = rec.pick && Math.abs(rec.pick.total - inv.kw) < 1e-9;
-    line(`Option B – Inverter size: ${rec.label} recommended for the customer's times of use (needs ${rec.req.toFixed(2)} kW incl. ${inv.margin}% margin; set by ${rec.driver === 'surge' ? 'motor starting surge' : rec.driver === 'phase' ? 'the most loaded phase' : 'the running peak'}). ${same ? 'The selected size matches.' : rec.pick && rec.pick.total > inv.kw ? `The selected ${inv.kw} kW is too small for these times.` : `The selected ${inv.kw} kW is larger than needed.`}`);
+    const nd = rec.need;
+    line(`Option B – Inverter: ${rec.label} recommended for the customer's times of use${three ? ' and current phases' : ''}. Set by ${rec.driverText}; needs ${H.fmtKW(nd.run * 1000)} kW total${three ? `, ${H.fmtKW(nd.phase * 1000)} kW on one phase` : ''} (incl. ${inv.margin}% margin)${three && LIM.unbal != null ? `, ${H.fmtKW(nd.unbal * 1000)} kW imbalance` : ''}. ${same ? 'The selected size matches.' : rec.pick && rec.pick.total > inv.kw ? `The selected ${inv.kw} kW is too small.` : `The selected ${inv.kw} kW is larger than needed.`}${rec.basis === 'library' ? ' Chosen from saved inverter datasheets.' : three ? ' Assumes larger sizes keep the same per-phase ratio as the selected datasheet – confirm the per-phase rating of the chosen model.' : ''}`);
+    if (recPhase && recPhase.pick && rec.pick && recPhase.pick.total < rec.pick.total) line(`With the phase changes in option C, ${recPhase.label} is enough.`);
     if (recAfter && recAfter.pick && rec.pick && recAfter.pick.total < rec.pick.total) line(`With the time changes in option A, ${recAfter.label} is enough.`);
     r++;
     sm.set(r, 1, 'Notes: the peak check uses the full rating of every unit used at the same time, for each hour it is on. Duty factor and hours per day affect daily energy only. Each hour shows the load from that hour to the next.', S.note); sm.merge(r, 1, r, 15); sm.height(r, 26); r += 2;
@@ -798,12 +980,15 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     try {
       const png = await H.svgToPng(H.chartSVG(res, inv, H.LIGHT_PAL, { w: 760, h: 300 }), 2);
       sm.image(png.bytes, 6, 3, 700, 276);
+      if (three) { const p2 = await H.svgToPng(H.phaseChartSVG(res, inv, H.LIGHT_PAL, { w: 760, h: 300 }), 2); sm.image(p2.bytes, 6, 19, 700, 276); }
     } catch (e) { /* chart is optional */ }
 
     // ================= Appliances =================
     const ap = wb.sheet('Appliances'); ap.landscape = true; ap.footer = footer; ap.freeze = [4, 2]; ap.printRows = [3, 3];
     const AH = ['No', 'Appliance', 'Group', 'Load type', 'Qty', 'Used at same time', 'Rating each (W)', 'Connected (W)', 'Running (W)', 'Surge (×)', 'Duty', 'Hours / day', 'Energy (kWh/day)', 'Power cut', 'Time can change', 'Phase', 'How often', 'Time of use', 'In check', 'Notes'];
-    [5, 34, 18, 16, 6, 9, 10, 11, 11, 8, 7, 8, 11, 8, 9, 7, 12, 30, 7, 30].forEach((w, i) => ap.width(i, w));
+    if (three) AH.push('Phase fixed by wiring', 'Suggested phase (option C)');
+    const sugPh = new Map(phasePlan ? phasePlan.moves.map(m => [m.id, m.to]) : []);
+    [5, 34, 18, 16, 6, 9, 10, 11, 11, 8, 7, 8, 11, 8, 9, 7, 12, 30, 7, 30, 9, 11].forEach((w, i) => ap.width(i, w));
     ap.set(0, 0, 'APPLIANCE SCHEDULE', S.title); ap.style(0, 0, 0, AH.length - 1, S.title); ap.merge(0, 0, 0, AH.length - 1); ap.height(0, 24);
     ap.set(1, 0, `${c.name || 'Customer'} · ${c.address ? c.address.replace(/\s+/g, ' ') : ''}`, S.sub); ap.merge(1, 0, 1, AH.length - 1);
     ap.set(2, 0, 'Connected = Qty × rating. Running = units used at the same time × rating (used for the peak check). Energy = running × duty × hours per day.', S.note); ap.merge(2, 0, 2, AH.length - 1);
@@ -817,6 +1002,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       ap.set(rr, 12, +(a.qtyOn * a.w * a.d * a.hpd / 1000).toFixed(4), S.tdN2, `I${R1}*K${R1}*L${R1}/1000`);
       ap.set(rr, 13, a.b ? 'Yes' : 'No', S.tdC); ap.set(rr, 14, a.f ? 'Yes' : 'No', S.tdC); ap.set(rr, 15, three ? (a.ph || 'L1') : '1φ', S.tdC);
       ap.set(rr, 16, H.USE_LABEL[a.use], S.td); ap.set(rr, 17, H.slotsText(a.hrs) || '—', S.tdW); ap.set(rr, 18, inc ? 'Yes' : 'No', S.tdC); ap.set(rr, 19, a.notes, S.tdW);
+      if (three) { ap.set(rr, 20, a.phLock ? 'Yes' : 'No', S.tdC); ap.set(rr, 21, sugPh.get(a.id) || '', sugPh.has(a.id) ? { ...S.tdC, font: { b: 1, sz: 9.5, color: '5C3D00' }, fill: 'FFD970' } : S.tdC); }
     });
     const tr = 4 + P.appliances.length, last = tr;   // total row
     ap.set(tr, 0, '', S.totL); ap.set(tr, 1, 'Total (appliances in check)', S.totL); for (let k = 2; k < AH.length; k++) ap.set(tr, k, '', S.totL);
@@ -834,17 +1020,17 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       const lastC = L.cOn;
       sh.width(0, 13); list.forEach((a, i) => sh.width(i + 1, 5.6));
       sh.width(L.cTotW, 9); sh.width(L.cTotKW, 8.5); sh.width(L.cRated, 8.5); sh.width(L.cLoad, 8.5);
-      if (three) [L.cL1, L.cL2, L.cL3, L.cPL].forEach(cc => sh.width(cc, 7.5));
-      sh.width(L.cStatus, 11.5); sh.width(L.cSurge, 24); sh.width(L.cOn, 60);
+      if (three) [L.cL1, L.cL2, L.cL3, L.cPL, L.cImb].forEach(cc => sh.width(cc, 7.5));
+      sh.width(L.cStatus, three ? 15 : 11.5); sh.width(L.cSurge, 24); sh.width(L.cOn, 60);
       sh.set(0, 0, title, S.title); sh.style(0, 0, 0, lastC, S.title); sh.merge(0, 0, 0, lastC); sh.height(0, 24);
-      sh.set(1, 0, `Each appliance column shows its running load (W) in that hour. The inverter rating comes from the Summary sheet – change it there and the totals, loading and status update. Red rows are over the rating; amber rows are above the warning level.${moved ? ' Gold cells = hours moved in; grey cells = hours moved out.' : ''}`, S.note);
+      sh.set(1, 0, `Each appliance column shows its running load (W) in that hour. The inverter rating comes from the Summary sheet – change it there and the totals, loading and status update. Red rows are over a limit (total rating${three ? ', a phase limit or the imbalance limit – the phase cell over its limit is solid red' : ''}); amber rows are above the warning level.${moved ? ' Gold cells = hours moved in; grey cells = hours moved out.' : ''}`, S.note);
       sh.merge(1, 0, 1, lastC); sh.height(1, 26);
       if (three) { sh.set(2, 0, 'Phase', S.k); list.forEach((a, i) => sh.set(2, i + 1, a.ph || 'L1', S.tdC)); }
       const hr = L.r0 - 1;
       sh.set(hr, 0, 'Time', S.th);
       list.forEach((a, i) => sh.set(hr, i + 1, `${a.name}${a.qtyOn > 1 ? ' ×' + a.qtyOn : ''} (${a.qtyOn * a.w >= 1000 ? (a.qtyOn * a.w / 1000).toFixed(2) + ' kW' : a.qtyOn * a.w + ' W'})`, S.thRot));
       sh.set(hr, L.cTotW, 'Total load (W)', S.th); sh.set(hr, L.cTotKW, 'Total load (kW)', S.th); sh.set(hr, L.cRated, 'Inverter rating (kW)', S.th); sh.set(hr, L.cLoad, 'Loading (%)', S.th);
-      if (three) { sh.set(hr, L.cL1, 'L1 (kW)', S.th); sh.set(hr, L.cL2, 'L2 (kW)', S.th); sh.set(hr, L.cL3, 'L3 (kW)', S.th); sh.set(hr, L.cPL, 'Phase limit (kW)', S.th); }
+      if (three) { sh.set(hr, L.cL1, 'L1 (kW)', S.th); sh.set(hr, L.cL2, 'L2 (kW)', S.th); sh.set(hr, L.cL3, 'L3 (kW)', S.th); sh.set(hr, L.cPL, 'Phase limit (kW)', S.th); sh.set(hr, L.cImb, 'Imbalance (kW)', S.th); }
       sh.set(hr, L.cStatus, 'Status', S.th); sh.set(hr, L.cSurge, 'Starting surge check', S.th); sh.set(hr, L.cOn, 'Appliances operating', S.th);
       sh.height(hr, 130);
       const A1 = XW.colName(1), An = XW.colName(Math.max(1, list.length));
@@ -868,11 +1054,13 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
           sh.set(rr, L.cL2, +(st.ph.L2 / 1000).toFixed(4), S.tdN2, ph('L2'));
           sh.set(rr, L.cL3, +(st.ph.L3 / 1000).toFixed(4), S.tdN2, ph('L3'));
           sh.set(rr, L.cPL, R.pl / 1000, S.tdN2, PL);
-          const mx = `MAX(${XW.colName(L.cL1)}${R1}:${XW.colName(L.cL3)}${R1})`, plc = `${XW.colName(L.cPL)}${R1}`;
-          statusF = `IF(OR(${cK}${R1}>${cR}${R1}+0.00001,${mx}>${plc}+0.00001),"OVERLOAD",IF(OR(${cLd}${R1}>${WARN}+0.00001,${mx}>${plc}*${WARN}+0.00001),"HIGH","OK"))`;
+          const lr = `${XW.colName(L.cL1)}${R1}:${XW.colName(L.cL3)}${R1}`, mx = `MAX(${lr})`, plc = `${XW.colName(L.cPL)}${R1}`, imc = `${XW.colName(L.cImb)}${R1}`;
+          sh.set(rr, L.cImb, +(st.imb / 1000).toFixed(4), S.tdN2, `${mx}-MIN(${lr})`);
+          statusF = `IF(${cK}${R1}>${cR}${R1}+0.00001,"OVERLOAD",IF(${mx}>${plc}+0.00001,"PHASE OVERLOAD",IF(AND(ISNUMBER(${UB}),${imc}>${UB}+0.00001),"UNBALANCE",IF(OR(${cLd}${R1}>${WARN}+0.00001,${mx}>${plc}*${WARN}+0.00001,AND(ISNUMBER(${UB}),${imc}>${UB}*${WARN}+0.00001)),"HIGH","OK"))))`;
         } else statusF = `IF(${cK}${R1}>${cR}${R1}+0.00001,"OVERLOAD",IF(${cLd}${R1}>${WARN}+0.00001,"HIGH","OK"))`;
-        sh.set(rr, L.cStatus, st.status === 'over' ? 'OVERLOAD' : st.status === 'high' ? 'HIGH' : 'OK', { ...S.tdC, font: { b: 1, sz: 9.5 } }, statusF);
-        sh.set(rr, L.cSurge, st.on.length ? (st.surgeOver ? `Check: ${st.extraName} start ≈ ${H.fmtKW(st.surgePeak)} kW` : `OK (≈ ${H.fmtKW(st.surgePeak)} kW)`) : '', S.td);
+        sh.set(rr, L.cStatus, st.label, { ...S.tdC, font: { b: 1, sz: 9.5 } }, statusF);
+        const kS = st.surgePh && st.surgePh[0];
+        sh.set(rr, L.cSurge, st.on.length ? (kS ? `Check ${kS}: ${st.xname[kS]} start ≈ ${H.fmtKW(st.ph[kS] + st.xph[kS])} kW on ${kS}` : st.surgeOver ? `Check: ${st.extraName} start ≈ ${H.fmtKW(st.surgePeak)} kW` : `OK (≈ ${H.fmtKW(st.surgePeak)} kW)`) : '', S.td);
         sh.set(rr, L.cOn, st.on.map(o => `${o.name}${o.n > 1 ? ' ×' + o.n : ''} (${o.p >= 1000 ? (o.p / 1000).toFixed(2) + ' kW' : Math.round(o.p) + ' W'})`).join(', '), S.tdW);
       }
       const r1 = L.r0 + 1, r24 = L.r0 + 24, mr = L.r0 + 24;
@@ -881,19 +1069,23 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       list.forEach((a, i) => { const cl = XW.colName(i + 1); sh.set(mr, i + 1, H.runW(a), { ...S.tot, align: { h: 'center', v: 'center' } }, `MAX(${cl}${r1}:${cl}${r24})`); sh.set(mr + 1, i + 1, H.countHrs(a.hrs), S.tot, `COUNT(${cl}${r1}:${cl}${r24})`); });
       sh.set(mr, L.cTotW, R.peak, S.tot, `MAX(${cT}${r1}:${cT}${r24})`); sh.set(mr, L.cTotKW, +(R.peak / 1000).toFixed(4), S.tot2, `MAX(${cK}${r1}:${cK}${r24})`);
       sh.set(mr, L.cRated, inv.kw, S.tot2, RATED); sh.set(mr, L.cLoad, R.peak / R.rated, { ...S.tot, numFmt: '0%' }, `MAX(${cLd}${r1}:${cLd}${r24})`);
+      if (three) { const cl = XW.colName(L.cImb); sh.set(mr, L.cImb, +(R.peakImb / 1000).toFixed(4), S.tot2, `MAX(${cl}${r1}:${cl}${r24})`); }
       if (three) [L.cL1, L.cL2, L.cL3].forEach((cc, k) => { const cl = XW.colName(cc); sh.set(mr, cc, +(R.peakPh['L' + (k + 1)] / 1000).toFixed(4), S.tot2, `MAX(${cl}${r1}:${cl}${r24})`); });
       const cS = XW.colName(L.cStatus);
-      sh.set(mr, L.cStatus, `${R.over.length} h over`, S.totL, `COUNTIF(${cS}${r1}:${cS}${r24},"OVERLOAD")&" h over"`);
+      sh.set(mr, L.cStatus, `${R.over.length} h over`, S.totL, `(24-COUNTIF(${cS}${r1}:${cS}${r24},"OK")-COUNTIF(${cS}${r1}:${cS}${r24},"HIGH"))&" h over"`);
       for (let cc = 1; cc <= lastC; cc++) { if (!sh.cells.has(mr * 16384 + cc)) sh.set(mr, cc, '', S.totL); if (!sh.cells.has((mr + 1) * 16384 + cc)) sh.set(mr + 1, cc, '', S.totL); }
       // conditional highlighting – recalculates when the rating on Summary changes
       const rows = `${r1}:${r24}`;
       const statusCell = `$${cS}${r1}`;
       const blockA = `A${r1}:A${r24} ${cT}${r1}:${XW.colName(L.cStatus)}${r24}`;
+      if (three) {
+        sh.cond(`${XW.colName(L.cL1)}${r1}:${XW.colName(L.cL3)}${r24}`, [{ formula: `${XW.colName(L.cL1)}${r1}>$${XW.colName(L.cPL)}${r1}+0.00001`, style: { fill: 'C62828', font: { color: 'FFFFFF', b: 1 } } }]);
+        sh.cond(`${XW.colName(L.cImb)}${r1}:${XW.colName(L.cImb)}${r24}`, [{ formula: `AND(ISNUMBER(${UB}),${XW.colName(L.cImb)}${r1}>${UB}+0.00001)`, style: { fill: 'C62828', font: { color: 'FFFFFF', b: 1 } } }]);
+      }
       sh.cond(blockA, [
-        { formula: `${statusCell}="OVERLOAD"`, style: { fill: 'FFC7CE', font: { color: '9C0006', b: 1 } } },
+        { formula: `AND(${statusCell}<>"OK",${statusCell}<>"HIGH")`, style: { fill: 'FFC7CE', font: { color: '9C0006', b: 1 } } },
         { formula: `${statusCell}="HIGH"`, style: { fill: 'FFEB9C', font: { color: '9C5700', b: 1 } } }
       ]);
-      if (three) sh.cond(`${XW.colName(L.cL1)}${r1}:${XW.colName(L.cL3)}${r24}`, [{ formula: `${XW.colName(L.cL1)}${r1}>$${XW.colName(L.cPL)}${r1}+0.00001`, style: { fill: 'FFC7CE', font: { color: '9C0006', b: 1 } } }]);
       void rows;
       legal(sh, mr + 3, 0, Math.min(lastC, 18));
       return sh;
