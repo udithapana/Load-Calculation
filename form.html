@@ -89,6 +89,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   .pfoot b{color:#16213a}
   .ph{display:flex;align-items:center;gap:4mm;border-bottom:1.2pt solid #10264a;padding-bottom:2mm;margin-bottom:3mm}
   .ph h1{font-size:14pt;color:#10264a}
+  .plogo{height:15mm;width:auto;flex:none}
   .ph .co{margin-left:auto;text-align:right;font-size:8pt;color:#4a5568}
   .pinst{font-size:8.3pt;margin:0 0 3mm;color:#16213a}
   .pgrid{display:grid;grid-template-columns:1fr 1fr;gap:3mm 6mm;margin-bottom:3mm}
@@ -124,8 +125,8 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
 <header class="topbar screen">
   <div class="wrap">
     <div class="brand">
-      <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="31" fill="#e0a526"/><circle cx="32" cy="32" r="12" fill="#10264a"/><g stroke="#10264a" stroke-width="4" stroke-linecap="round"><path d="M32 8v8M32 48v8M8 32h8M48 32h8M15 15l6 6M43 43l6 6M15 49l6-6M43 21l6-6"/></g></svg>
-      <div class="brand-txt"><b>Regen</b><span>Home Energy Use Form</span></div>
+      <span class="brand-logo"><img src="regen-logo.png" alt="Regen – The Solar Energy Company" width="48" height="40"></span>
+      <div class="brand-txt"><b>Home Energy Use Form</b><span>Hybrid solar system</span></div>
     </div>
   </div>
 </header>
@@ -491,7 +492,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
       if (d === 'submit') doSubmit(m);
       if (d === 'share') { const r = await H.shareFile(fileName(), json, 'application/json', 'Regen load form', `Home energy use form – ${state.customer.name}`); if (r === 'downloaded') toast('Saved to Downloads — attach it in WhatsApp or email'); }
       if (d === 'dl') { H.download(fileName(), json, 'application/json'); toast('Form file saved to Downloads'); }
-      if (d === 'pdf') { buildPrint(false); setTimeout(() => window.print(), 50); }
+      if (d === 'pdf') { buildPrint(false); printWhenReady(); }
       if (d === 'new') { H.store.del('form_draft'); location.reload(); }
     });
   });
@@ -508,7 +509,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   function buildPrint(blank) {
     const c = blank ? H.emptyCustomer() : state.customer;
     const v = k => blank ? '' : H.esc(c[k]);
-    const logo = `<svg width="30" height="30" viewBox="0 0 64 64"><circle cx="32" cy="32" r="31" fill="#e0a526"/><circle cx="32" cy="32" r="12" fill="#10264a"/><g stroke="#10264a" stroke-width="4" stroke-linecap="round"><path d="M32 8v8M32 48v8M8 32h8M48 32h8M15 15l6 6M43 43l6 6M15 49l6-6M43 21l6-6"/></g></svg>`;
+    const logo = `<img class="plogo" src="regen-logo.png" alt="Regen">`;
     const head = `<div class="ph">${logo}<div><h1>Home Energy Use Form – Hybrid Solar System</h1><div style="font-size:8pt;color:#4a5568">Appliance list, hours of use and electricity connection details</div></div><div class="co"><b>${H.COMPANY.name}</b><br>${H.COMPANY.addr}<br>${H.COMPANY.web}</div></div>`;
     const det = `<div class="pgrid">
       <div class="pbox"><h2>1. Customer details</h2><table class="kv">
@@ -568,10 +569,16 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
       ${head}${det}<div class="brk"></div>${head}<div class="pbox"><h2>3. Appliances and hours of use</h2></div>${inst}
       <table class="at">${hdr}${body}</table>${sig}</td></tr></tbody><tfoot><tr><td><div class="pf-space"></div></td></tr></tfoot></table>`;
   }
-  $('#printBlank').addEventListener('click', () => { buildPrint(true); setTimeout(() => window.print(), 50); });
+  // print once the logo images in the printable form have loaded
+  function printWhenReady(delay = 50) {
+    const imgs = [...document.querySelectorAll('#printArea img')];
+    Promise.all(imgs.map(im => im.complete ? Promise.resolve() : new Promise(r => { im.onload = im.onerror = r; setTimeout(r, 3000); })))
+      .then(() => setTimeout(() => window.print(), delay));
+  }
+  $('#printBlank').addEventListener('click', () => { buildPrint(true); printWhenReady(); });
 
   renderCats(); renderList(); updateSum(); sizeCanvas(); renderSent();
-  if (params.get('blank') === '1') { buildPrint(true); window.addEventListener('load', () => setTimeout(() => window.print(), 300)); }
+  if (params.get('blank') === '1') { buildPrint(true); window.addEventListener('load', () => printWhenReady(300)); }
   window.__hlcForm = { state, buildPrint, payload };   // used by automated tests
 })();
 </script>

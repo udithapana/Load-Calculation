@@ -155,7 +155,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
 <header class="topbar" id="topbar">
   <div class="wrap">
     <div class="brand">
-      <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="31" fill="#e0a526"/><circle cx="32" cy="32" r="12" fill="#10264a"/><g stroke="#10264a" stroke-width="4" stroke-linecap="round"><path d="M32 8v8M32 48v8M8 32h8M48 32h8M15 15l6 6M43 43l6 6M15 49l6-6M43 21l6-6"/></g></svg>
+      <span class="brand-logo"><img src="regen-logo.png" alt="Regen – The Solar Energy Company" width="48" height="40"></span>
       <div class="brand-txt"><b>Hybrid Load Calculator</b><span class="proj" id="projName">New project</span></div>
     </div>
     <div class="spacer"></div>
@@ -811,7 +811,23 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
   }
 
   // ---------- PDF report (with calculations) ----------
+  let logoJpeg = null;
+  function loadLogoJpeg() {
+    if (logoJpeg) return Promise.resolve(logoJpeg);
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0);
+        c.toBlob(b => b ? b.arrayBuffer().then(buf => { logoJpeg = { bytes: new Uint8Array(buf), w: c.width, h: c.height }; resolve(logoJpeg); }) : reject(new Error('logo')), 'image/jpeg', 0.95);
+      };
+      img.onerror = () => reject(new Error('Logo not found'));
+      img.src = 'regen-logo.png';
+    });
+  }
   async function buildReport(P) {
+    let LOGO = null;
+    try { LOGO = await loadLogoJpeg(); } catch (e) { /* report still works without the logo */ }
     const inv = P.inv, c = P.customer, three = +inv.phase === 3;
     const mlib = models();
     const res = H.analyse(P.appliances, inv);
@@ -846,7 +862,8 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       d.circle(x, yy, r * 0.38, { fill: NAVY });
     }
     function pageHeader() {
-      d.text(M, 10, 'Hybrid System Load Calculation', { size: 8, bold: true, color: NAVY });
+      if (LOGO) d.image(LOGO.bytes, LOGO.w, LOGO.h, M, 3.6, 7.4 * LOGO.w / LOGO.h, 7.4);
+      d.text(M + (LOGO ? 10.5 : 0), 10, 'Hybrid System Load Calculation', { size: 8, bold: true, color: NAVY });
       d.text(210 - M, 10, [c.name, P.formRef || P.prep.ref].filter(Boolean).join(' · '), { size: 8, color: MUTED, align: 'right' });
       d.line(M, 11.8, 210 - M, 11.8, { color: LINE, width: 0.3 });
     }
@@ -920,13 +937,15 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     };
 
     // ===== first page header =====
-    logo(M + 6, TOP + 6, 6);
-    d.text(M + 15, TOP + 4.5, 'Hybrid System Load Calculation Report', { size: 14.5, bold: true, color: NAVY });
-    d.text(M + 15, TOP + 9.6, '24-hour load profile and inverter capacity check', { size: 8.6, color: MUTED });
+    let tx = M + 15;
+    if (LOGO) { const lh = 19, lw = lh * LOGO.w / LOGO.h; d.image(LOGO.bytes, LOGO.w, LOGO.h, M, TOP - 6, lw, lh); tx = M + lw + 4; }
+    else logo(M + 6, TOP + 6, 6);
+    d.text(tx, TOP + 4.5, 'Hybrid System Load Calculation Report', { size: 14.5, bold: true, color: NAVY });
+    d.text(tx, TOP + 9.6, '24-hour load profile and inverter capacity check', { size: 8.6, color: MUTED });
     d.text(210 - M, TOP + 2.5, H.COMPANY.name, { size: 8, bold: true, color: INK, align: 'right' });
     d.text(210 - M, TOP + 6.2, H.COMPANY.addr, { size: 7.2, color: MUTED, align: 'right' });
     d.text(210 - M, TOP + 9.6, H.COMPANY.web, { size: 7.2, color: MUTED, align: 'right' });
-    y = TOP + 14; d.line(M, y, 210 - M, y, { color: NAVY, width: 0.6 }); y += 4;
+    y = TOP + 15; d.line(M, y, 210 - M, y, { color: NAVY, width: 0.6 }); y += 4;
     const repDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     kv([['Customer', c.name], ['Report date', repDate], ['Project / reference', [P.prep.ref, P.formRef].filter(Boolean).join(' · ')], ['Prepared by', P.prep.by]]);
 
