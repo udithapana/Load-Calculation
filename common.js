@@ -668,6 +668,23 @@ const HLC = (() => {
     });
   }
 
+  // SVG -> JPEG (white background) for the PDF report: { bytes, w, h } in pixels
+  function svgToJpeg(svg, scale = 2, quality = 0.92) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+        const g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.scale(scale, scale); g.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        c.toBlob(b => b ? b.arrayBuffer().then(buf => resolve({ bytes: new Uint8Array(buf), w: c.width, h: c.height })) : reject(new Error('Chart image failed')), 'image/jpeg', quality);
+      };
+      img.onerror = () => reject(new Error('Chart render failed'));
+      img.src = url;
+    });
+  }
+
   // ---------- hour picker (shared UI) ----------
   const HOUR_ROWS = [['Night', 0], ['Morning', 6], ['Afternoon', 12], ['Evening', 18]];
   const PRESETS = [['Morning 6–9 AM', 6, 9], ['Day 9 AM–5 PM', 9, 17], ['Evening 6–10 PM', 18, 22], ['Night 10 PM–6 AM', 22, 30], ['24 hours', 0, 24]];
@@ -733,7 +750,7 @@ const HLC = (() => {
     FORM_TYPE, PROJECT_TYPE, VERSION, COMPANY, copyright, NOTICE, COMPANY_LINE, TYPES, CATS, ITEM, CAT_NAME, USE_LABEL, SIZES,
     esc, uid, num, hh, ampm, ampmShort, countHrs, fmtKW, emptyHrs, blocks, slotsText, store, parseFileText,
     newAppliance, normalise, emptyCustomer, defaultInverter, inScope, runW, phaseLimitW, limits, PH, hourState, severity,
-    analyse, planShift, groupMoves, recommendInverter, autoBalance, planPhases, phaseChartSVG, chartSVG, svgToPng, LIGHT_PAL,
+    analyse, planShift, groupMoves, recommendInverter, autoBalance, planPhases, phaseChartSVG, chartSVG, svgToPng, svgToJpeg, LIGHT_PAL,
     configUrl, validScriptUrl, cloudPost,
     CAPACITIES, TARIFF_GROUPS, TARIFFS, TOU_TARIFFS, TOU_PERIODS, isTouTariff, touOn, touTotal, hasTouValues, capacityText, tariffOptionsHTML, touSplit, entryName,
     hourPickerHTML, applyPreset, PHASE_COL, download, shareFile, safeName, today

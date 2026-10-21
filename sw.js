@@ -2,8 +2,8 @@
 // All apps on udithapana.github.io share one origin, so this worker is registered with scope './'
 // and only ever creates or deletes caches whose names start with 'load-calc-'.
 const PREFIX = 'load-calc-';
-const CACHE = PREFIX + 'v3';
-const SHELL = ['./', './index.html', './form.html', './common.js', './common.css', './xlsx-writer.js', './config.js', './manifest.webmanifest',
+const CACHE = PREFIX + 'v4';
+const SHELL = ['./', './index.html', './form.html', './common.js', './common.css', './xlsx-writer.js', './pdf-writer.js', './config.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './icon-maskable-192.png', './icon-maskable-512.png'];
 
 self.addEventListener('install', e => {

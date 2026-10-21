@@ -50,6 +50,11 @@
 .toutbl th{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);text-align:left;padding:6px 14px 6px 0;border-bottom:1px solid var(--line)}
 .toutbl td{padding:6px 14px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
 .tt{display:block;font-weight:500;font-size:11.5px;color:var(--muted)}
+.bkbox{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;border:1px solid var(--gold);background:#fffaf0;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.bkbox>div:first-child{flex:1 1 220px;min-width:0}
+.repcard{margin-top:12px;display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;border-color:var(--gold);background:#fffaf0}
+.repcard>div:first-child{flex:1 1 260px;min-width:0}
+.repacts{display:flex;flex-wrap:wrap;gap:8px}
 .import{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--gold-soft);border:1px solid #f0d58c;border-radius:var(--radius);padding:14px;margin-top:16px}
 .import p{margin:0;flex:1;min-width:220px;font-size:14px}
 .sigimg{max-height:70px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:4px}
@@ -280,6 +285,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
 <script src="config.js"></script>
 <script src="common.js"></script>
 <script src="xlsx-writer.js"></script>
+<script src="pdf-writer.js"></script>
 <script>
 (() => {
   const H = HLC, $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -759,8 +765,10 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
         <td class="on">${st.on.map(o => `${esc(o.name)}${o.n > 1 ? ' ×' + o.n : ''} (${kwTxt(o.p)}${three ? ', ' + o.ph : ''})`).join(', ') || '—'}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 
-    out.innerHTML = `${dsWarn}<div class="verdict ${v.cls}"><div class="ico">${v.ico}</div><div><h3>${esc(v.h)}</h3><p>${esc(v.p)}</p></div></div>${kpis}${chart}${recs}${notes}
-      <div class="sec-h"><h2>Hour by hour</h2><p>${showAdj ? 'With suggested time changes' : "Customer's times of use"}</p></div>${tbl}`;
+    const repCard = `<div class="card repcard"><div><b>Report</b><p class="small muted" style="margin:2px 0 0">PDF with the results, charts, recommendations, the calculation steps, the appliance schedule and the hour-by-hour table.</p></div>
+      <div class="repacts"><button class="btn primary" type="button" data-rep="dl">Download report (PDF)</button><button class="btn" type="button" data-rep="share">Share report</button><button class="btn" type="button" data-rep="xl">Excel sheet</button></div></div>`;
+    out.innerHTML = `${dsWarn}<div class="verdict ${v.cls}"><div class="ico">${v.ico}</div><div><h3>${esc(v.h)}</h3><p>${esc(v.p)}</p></div></div>${kpis}${chart}${recs}${notes}${repCard}
+      <div class="sec-h"><h2>Hour by hour</h2><p>${showAdj ? 'With suggested time changes' : "Customer's times of use"}</p></div>${tbl}${repCard}`;
     if (selHour != null) renderHourDetail(cres);
 
     $('#cMode')?.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; chartMode = b.dataset.v; renderAnalysis(); });
@@ -802,6 +810,401 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       <ul>${st.on.map(o => `<li>${esc(o.name)}${o.n > 1 ? ' ×' + o.n : ''} – ${kwTxt(o.p)}${three ? ` · ${o.ph}` : ''}</li>`).join('') || '<li>Nothing running</li>'}</ul></div>`;
   }
 
+  // ---------- PDF report (with calculations) ----------
+  async function buildReport(P) {
+    const inv = P.inv, c = P.customer, three = +inv.phase === 3;
+    const mlib = models();
+    const res = H.analyse(P.appliances, inv);
+    const plan = res.over.length ? H.planShift(P.appliances, inv) : null;
+    const phasePlan = three ? H.planPhases(P.appliances, inv) : null;
+    const rec = H.recommendInverter(res, inv, P.sizes[inv.phase], mlib);
+    const recAfter = plan && plan.moves.length ? H.recommendInverter(plan.result, inv, P.sizes[inv.phase], mlib) : null;
+    const recPhase = phasePlan && phasePlan.moves.length ? H.recommendInverter(phasePlan.result, inv, P.sizes[inv.phase], mlib) : null;
+    const LIM = H.limits(inv);
+    const scoped = P.appliances.filter(a => H.inScope(a, inv));
+    const v = verdict(res, inv);
+    const kw = w => H.fmtKW(w), pct = x => Math.round(x * 100) + '%';
+    const fmtW = w => w >= 1000 ? (w / 1000).toFixed(2) + ' kW' : Math.round(w) + ' W';
+    const n0 = x => Math.round(x).toLocaleString('en-US');
+
+    const d = new PW.Doc();
+    const NAVY = '10264A', BLUE = '1F4E8C', GOLD = 'E0A526', INK = '16213A', MUTED = '5B6680', LINE = 'C8D1DF', SOFT = 'F1F4F9';
+    const M = 14, CW = 210 - 2 * M, TOP = 16;
+    // footer (same notice as the other Regen documents)
+    const FOOT_FS = 6.4, FOOT_LH = 2.75;
+    const noticeLines = d.wrap(H.NOTICE, CW, FOOT_FS, false);
+    const footLines = 2 + noticeLines.length + 1;
+    const FOOT_RULE = 297 - 7 - (footLines - 1) * FOOT_LH - 4;
+    const BOTTOM = FOOT_RULE - 3;
+    let y = TOP;
+    const newPage = () => { d.addPage(); y = TOP; pageHeader(); };
+    const ensure = h => { if (y + h > BOTTOM) { newPage(); return true; } return false; };
+
+    function logo(x, yy, r) {
+      d.circle(x, yy, r, { fill: GOLD });
+      for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; d.line(x + Math.cos(a) * r * 0.5, yy + Math.sin(a) * r * 0.5, x + Math.cos(a) * r * 0.8, yy + Math.sin(a) * r * 0.8, { color: NAVY, width: r * 0.13 }); }
+      d.circle(x, yy, r * 0.38, { fill: NAVY });
+    }
+    function pageHeader() {
+      d.text(M, 10, 'Hybrid System Load Calculation', { size: 8, bold: true, color: NAVY });
+      d.text(210 - M, 10, [c.name, P.formRef || P.prep.ref].filter(Boolean).join(' · '), { size: 8, color: MUTED, align: 'right' });
+      d.line(M, 11.8, 210 - M, 11.8, { color: LINE, width: 0.3 });
+    }
+    function section(title) {
+      ensure(32);                     // keep the heading with the start of its content
+      y += 3;
+      d.rect(M, y, CW, 6.4, { fill: NAVY });
+      d.text(M + 2.5, y + 4.5, title.toUpperCase(), { size: 8.6, bold: true, color: 'FFFFFF' });
+      y += 9;
+    }
+    function para(text, o = {}) {
+      const size = o.size || 8.4, lh = size * 0.42, lines = d.wrap(text, o.w || CW, size, o.bold);
+      lines.forEach(l => { ensure(lh + 0.6); d.text((o.x || M), y + size * 0.3, l, { size, bold: o.bold, color: o.color || INK }); y += lh; });
+      y += o.after == null ? 1.6 : o.after;
+    }
+    function kv(rows, cols = 2) {
+      const colW = CW / cols, kW = colW * 0.40, vW = colW - kW, fs = 7.8, lh = 3.35;
+      for (let i = 0; i < rows.length; i += cols) {
+        const chunk = rows.slice(i, i + cols);
+        const hts = chunk.map(([k, val]) => Math.max(d.wrap(k, kW - 3, fs, true).length, d.wrap(String(val || '—'), vW - 3, fs).length) * lh + 2.6);
+        const h = Math.max(...hts); ensure(h);
+        chunk.forEach(([k, val], j) => {
+          const x = M + j * colW;
+          d.rect(x, y, kW, h, { fill: SOFT, stroke: LINE, width: 0.2 });
+          d.rect(x + kW, y, vW, h, { stroke: LINE, width: 0.2 });
+          d.wrap(k, kW - 3, fs, true).forEach((l, n) => d.text(x + 1.5, y + 3.6 + n * lh, l, { size: fs, bold: true, color: '33415C' }));
+          if (k) d.wrap(String(val || '—'), vW - 3, fs).forEach((l, n) => d.text(x + kW + 1.5, y + 3.6 + n * lh, l, { size: fs, color: INK }));
+        });
+        y += h;
+      }
+      y += 2;
+    }
+    // table: cols [{h, w, align}], rows [[cells]], opt {fs, rowFill(i)->hex, bold(i,j)}
+    function table(cols, rows, opt = {}) {
+      const fs = opt.fs || 7.2, lh = fs * 0.42, pad = 1.3;
+      const drawHead = () => {
+        const hl = cols.map(cl => d.wrap(cl.h, cl.w - 2 * pad, fs, true));
+        const hh = Math.max(...hl.map(l => l.length)) * lh + 2.4;
+        let x = M;
+        cols.forEach((cl, j) => {
+          d.rect(x, y, cl.w, hh, { fill: NAVY, stroke: '6B7A99', width: 0.15 });
+          hl[j].forEach((l, n) => d.text(cl.align === 'right' ? x + cl.w - pad : cl.align === 'center' ? x + cl.w / 2 : x + pad, y + 2.9 + n * lh, l, { size: fs, bold: true, color: 'FFFFFF', align: cl.align }));
+          x += cl.w;
+        });
+        y += hh;
+      };
+      ensure(14); drawHead();
+      rows.forEach((r, i) => {
+        const cl = cols.map((col, j) => d.wrap(String(r[j] == null ? '' : r[j]), col.w - 2 * pad, fs, opt.bold && opt.bold(i, j)));
+        const h = Math.max(...cl.map(l => l.length)) * lh + 2.1;
+        const keep = opt.keepLast && i === rows.length - 2 ? h * 2 + 2 : h;     // don't leave the total row alone on a page
+        if (y + keep > BOTTOM) { newPage(); drawHead(); }
+        let x = M;
+        const fill = opt.rowFill ? opt.rowFill(i) : (i % 2 ? 'F8F9FC' : null);
+        cols.forEach((col, j) => {
+          const cf = opt.cellFill && opt.cellFill(i, j);
+          d.rect(x, y, col.w, h, { fill: cf || fill || undefined, stroke: LINE, width: 0.15 });
+          const color = opt.color ? opt.color(i, j) : INK;
+          cl[j].forEach((l, n) => d.text(col.align === 'right' ? x + col.w - pad : col.align === 'center' ? x + col.w / 2 : x + pad, y + 2.75 + n * lh, l, { size: fs, bold: opt.bold && opt.bold(i, j), color, align: col.align }));
+          x += col.w;
+        });
+        y += h;
+      });
+      y += 3;
+    }
+    const fit = (cols) => { const t = cols.reduce((s, cl) => s + cl.w, 0); return cols.map(cl => Object.assign({}, cl, { w: cl.w * CW / t })); };
+    const bullet = (text, o = {}) => {
+      const fs = o.size || 8.2, lh = fs * 0.42, lines = d.wrap(text, CW - 6, fs, o.bold);
+      lines.forEach((l, n) => { ensure(lh + 0.6); if (!n) d.text(M + 1.5, y + fs * 0.3, '•', { size: fs, color: o.color || INK }); d.text(M + 5, y + fs * 0.3, l, { size: fs, bold: o.bold, color: o.color || INK }); y += lh; });
+      y += 0.8;
+    };
+
+    // ===== first page header =====
+    logo(M + 6, TOP + 6, 6);
+    d.text(M + 15, TOP + 4.5, 'Hybrid System Load Calculation Report', { size: 14.5, bold: true, color: NAVY });
+    d.text(M + 15, TOP + 9.6, '24-hour load profile and inverter capacity check', { size: 8.6, color: MUTED });
+    d.text(210 - M, TOP + 2.5, H.COMPANY.name, { size: 8, bold: true, color: INK, align: 'right' });
+    d.text(210 - M, TOP + 6.2, H.COMPANY.addr, { size: 7.2, color: MUTED, align: 'right' });
+    d.text(210 - M, TOP + 9.6, H.COMPANY.web, { size: 7.2, color: MUTED, align: 'right' });
+    y = TOP + 14; d.line(M, y, 210 - M, y, { color: NAVY, width: 0.6 }); y += 4;
+    const repDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    kv([['Customer', c.name], ['Report date', repDate], ['Project / reference', [P.prep.ref, P.formRef].filter(Boolean).join(' · ')], ['Prepared by', P.prep.by]]);
+
+    // ===== 1. customer =====
+    section('1. Customer and electricity connection');
+    const cust = [
+      ['Installation address', (c.address || '').replace(/\s+/g, ' ')], ['Mobile / email', [c.phone, c.email].filter(Boolean).join(' · ')],
+      [`${c.utility || 'CEB'} account no.`, c.account], ['Name on bill', c.billName],
+      ['Supply type', c.supply], ['Connection capacity', H.capacityText(c)],
+      ['Tariff category', c.tariff], ['Avg. monthly units / bill', (c.units || c.bill) ? `${c.units || '—'} kWh · Rs. ${c.bill || '—'}` : ''],
+    ];
+    if (H.touOn(c) || H.hasTouValues(c)) cust.push(['Time-of-use units (bill)', `Day ${c.touDay || '—'} · Peak ${c.touPeak || '—'} · Off-peak ${c.touOff || '—'} kWh/month`]);
+    cust.push(['Existing solar', c.solar === 'Yes' ? `Yes – ${c.solarKw || '?'} kW${c.solarScheme ? ' (' + c.solarScheme + ')' : ''}` : (c.solar || 'No')],
+      ['Power cuts / backup needed', [c.outages, c.backupHrs ? c.backupHrs + ' h backup' : ''].filter(Boolean).join(' · ')]);
+    if (P.formSubmitted) cust.push(['Customer form', `${P.formRef ? P.formRef + ', ' : ''}received ${new Date(P.formSubmitted).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}${c.signature ? ', signed' : ''}`]);
+    if (cust.length % 2) cust.push(['', '']);
+    kv(cust);
+    if (c.notes) para('Customer notes: ' + c.notes, { size: 7.8, color: MUTED });
+
+    // ===== 2. inverter =====
+    section('2. Selected inverter and check settings');
+    const invRows = [['Inverter', (inv.model ? inv.model + ' – ' : '') + `${inv.kw} kW ${three ? 'three' : 'single'}-phase`], ['Surge capability', `${inv.surge} × rated = ${(inv.kw * inv.surge).toFixed(1)} kW (~10 s)`],
+      ['High-loading warning level', inv.warn + '%'], ['Sizing margin', inv.margin + '%'], ['Loads checked', inv.scope === 'backup' ? 'Power-cut (backup) loads only' : 'All appliances'], ['Appliance entries checked', `${scoped.length} of ${P.appliances.length}`]];
+    if (three) invRows.push(['Per-phase continuous output', `${kw(LIM.pl)} kW${LIM.assumed ? ' – ASSUMED rated ÷ 3, not from datasheet' : LIM.scaled ? ' – estimated, confirm on datasheet' : ' (datasheet)'}`],
+      ['Max phase imbalance', LIM.unbal == null ? 'No limit stated' : kw(LIM.unbal) + ' kW'], ['Per-phase peak capability', kw(LIM.ppk) + ' kW (~10 s)'], ['', '']);
+    kv(invRows);
+
+    // ===== 3. result =====
+    section('3. Result');
+    {
+      const col = { ok: ['E5F3EA', '2E7D4F'], high: ['FFF3D1', '8A5D00'], over: ['FDE8E8', 'C62828'] }[v.cls];
+      const hl = d.wrap(v.h, CW - 8, 10, true), pl = d.wrap(v.p, CW - 8, 8.2);
+      const h = hl.length * 4.4 + pl.length * 3.5 + 5;
+      ensure(h);
+      d.rect(M, y, CW, h, { fill: col[0], stroke: col[1], width: 0.4 });
+      d.rect(M, y, 1.6, h, { fill: col[1] });
+      let yy = y + 5;
+      hl.forEach(l => { d.text(M + 5, yy, l, { size: 10, bold: true, color: col[1] }); yy += 4.4; });
+      pl.forEach(l => { d.text(M + 5, yy - 0.5, l, { size: 8.2, color: INK }); yy += 3.5; });
+      y += h + 3;
+    }
+    {
+      const maxPh = three ? Math.max(res.peakPh.L1, res.peakPh.L2, res.peakPh.L3) : 0;
+      const tiles = [
+        ['Peak simultaneous load', kw(res.peak) + ' kW', `${H.ampm(res.peakHour)} – ${H.ampm(res.peakHour + 1)}`, res.totalOver.length ? 'C62828' : NAVY],
+        ['Loading at peak', pct(res.peak / res.rated), `of ${inv.kw} kW`, res.totalOver.length ? 'C62828' : NAVY],
+        ...(three ? [['Highest phase load', kw(maxPh) + ' kW', `${Math.round(maxPh / res.pl * 100)}% of ${kw(res.pl)} kW`, maxPh > res.pl + 0.01 ? 'C62828' : NAVY]] : []),
+        ['Hours over a limit', String(res.over.length), `${res.high.length} h above ${inv.warn}%`, res.over.length ? 'C62828' : NAVY],
+        ['Daily energy', res.energy.toFixed(1) + ' kWh', `${res.eDay.toFixed(1)} day · ${res.eNight.toFixed(1)} night`, NAVY],
+        ['Connected load', (res.connected / 1000).toFixed(2) + ' kW', 'all units, if all on', NAVY]
+      ];
+      const tw = (CW - (tiles.length - 1) * 2) / tiles.length, th = 17;
+      ensure(th + 2);
+      tiles.forEach((t, i) => {
+        const x = M + i * (tw + 2);
+        d.rect(x, y, tw, th, { stroke: LINE, width: 0.3 });
+        d.wrap(t[0].toUpperCase(), tw - 3, 5.8, true).slice(0, 2).forEach((l, n) => d.text(x + 1.8, y + 3.6 + n * 2.6, l, { size: 5.8, bold: true, color: MUTED }));
+        d.text(x + 1.8, y + 11.2, t[1], { size: 11, bold: true, color: t[3] });
+        d.text(x + 1.8, y + 15, d.wrap(t[2], tw - 3, 6.2)[0] || '', { size: 6.2, color: MUTED });
+      });
+      y += th + 4;
+    }
+    // charts
+    const chartImg = async (svg, title) => {
+      try {
+        const im = await H.svgToJpeg(svg, 2.2);
+        const w = CW, h = w * im.h / im.w;
+        ensure(h + 7);
+        d.text(M, y + 3, title, { size: 8.6, bold: true, color: NAVY }); y += 5;
+        d.rect(M, y, w, h, { stroke: LINE, width: 0.2 });
+        d.image(im.bytes, im.w, im.h, M, y, w, h); y += h + 4;
+      } catch (e) { para('(Chart could not be drawn on this device.)', { color: MUTED }); }
+    };
+    await chartImg(H.chartSVG(res, inv, H.LIGHT_PAL, { w: 760, h: 300 }), '24-hour load profile (customer\'s times of use)');
+    if (three) await chartImg(H.phaseChartSVG(res, inv, H.LIGHT_PAL, { w: 760, h: 300 }), 'Load per phase (L1, L2, L3)');
+
+    // ===== 4. recommendations =====
+    section('4. Recommendations');
+    if (three) {
+      para('Option C – Balance the phases', { bold: true, size: 8.8, after: 0.8 });
+      if (phasePlan && phasePlan.moves.length) {
+        const pr = phasePlan.result, ok = !pr.phaseOverAny.length && !pr.unbalHours.length;
+        para(`${ok ? 'Moving these single-phase circuits removes every phase overload' : 'Moving these single-phase circuits reduces the phase overload but does not remove it'}; highest phase becomes ${kw(Math.max(pr.peakPh.L1, pr.peakPh.L2, pr.peakPh.L3))} kW of ${kw(LIM.pl)} kW. Only where the house wiring allows the circuit to be moved.`, { after: 0.8 });
+        phasePlan.moves.forEach(m => bullet(`${m.name} (${fmtW(m.p)}): move from ${m.from} to ${m.to}`));
+      } else if (res.phaseOverAny.length || res.unbalHours.length) para('No phase change removes the overload (circuits marked "phase fixed", or every move overloads another phase).');
+      else para(`Every phase stays within ${kw(LIM.pl)} kW${LIM.unbal != null ? ` and within the ${kw(LIM.unbal)} kW imbalance limit` : ''}. No changes needed.`);
+      res.tooBig.forEach(t => para(`${t.name} (${fmtW(t.p)}) is bigger than the ${kw(LIM.pl)} kW per-phase limit and cannot run on any single phase of this inverter.`, { color: 'C62828' }));
+      y += 1;
+    }
+    para('Option A – Change times of use', { bold: true, size: 8.8, after: 0.8 });
+    if (!res.over.length) para("No overload with the customer's times of use, so no changes are needed.");
+    else if (plan && plan.moves.length) {
+      para(`${plan.resolved ? 'These changes remove every overload' : 'These changes reduce the overload; still over in ' + hourRange(plan.result.over)}. New peak ${kw(plan.result.peak)} kW (${pct(plan.result.peak / res.rated)}). Only appliances the customer marked as flexible are moved.`, { after: 0.8 });
+      H.groupMoves(plan.moves).forEach(g => bullet(`${g.name} (${kw(g.p)} kW): from ${H.slotsText(g.from, '12')} to ${H.slotsText(g.to, '12')}`));
+    } else para(`No time change found: none of the appliances running in ${hourRange(res.over)} is marked as flexible, or no other hour has spare capacity.`);
+    y += 1;
+    para('Option B – Inverter size', { bold: true, size: 8.8, after: 0.8 });
+    const same = rec.pick && Math.abs(rec.pick.total - inv.kw) < 1e-9;
+    para(`Recommended: ${rec.label}, for the customer's times of use${three ? ' and current phases' : ''}. Set by ${rec.driverText}. ${same ? 'The selected inverter matches.' : rec.pick && rec.pick.total > inv.kw ? `The selected ${inv.kw} kW is too small.` : `The selected ${inv.kw} kW is larger than needed.`}${rec.basis === 'library' ? ' Chosen from saved inverter datasheets.' : three ? ' Larger sizes are assumed to keep the same per-phase ratio as the selected datasheet; confirm the per-phase rating of the chosen model.' : ''}`, { after: 0.8 });
+    if (recPhase && recPhase.pick && rec.pick && recPhase.pick.total < rec.pick.total) bullet(`With the phase changes in option C: ${recPhase.label} is enough.`);
+    if (recAfter && recAfter.pick && rec.pick && recAfter.pick.total < rec.pick.total) bullet(`With the time changes in option A: ${recAfter.label} is enough.`);
+
+    // ===== 5. calculations =====
+    section('5. Calculation method and worked figures');
+    const step = (t, f, w) => { ensure(12); para(t, { bold: true, size: 8.4, after: 0.6 }); if (f) para(f, { size: 8, color: BLUE, after: 0.6, x: M + 3, w: CW - 3 }); if (w) para(w, { size: 8, after: 2.2, x: M + 3, w: CW - 3 }); };
+    const big = scoped.slice().sort((a, b) => H.runW(b) - H.runW(a))[0];
+    step('Step 1 – Running load of each appliance',
+      'P (W) = number used at the same time × rating of one unit',
+      big ? `Example: ${big.name}: ${big.qtyOn} × ${n0(big.w)} W = ${n0(H.runW(big))} W. All entries are listed in section 6. Every unit "used at the same time" is counted at full rating for each hour it is on.` : '');
+    const pk = res.hours[res.peakHour];
+    step('Step 2 – Total load in each hour',
+      'L(h) = sum of P for every appliance switched on in hour h (h = the hour from h:00 to h+1:00)',
+      `Peak hour ${H.hh(res.peakHour)}–${H.hh(res.peakHour + 1)}: ${pk.on.map(o => n0(o.p)).join(' + ') || '0'} = ${n0(res.peak)} W = ${kw(res.peak)} kW. All 24 hours are listed in section 7.`);
+    step('Step 3 – Inverter loading',
+      'Loading = L(h) ÷ inverter rated output;  over = above 100 %,  high = above the warning level',
+      `At the peak: ${kw(res.peak)} kW ÷ ${inv.kw.toFixed(2)} kW = ${pct(res.peak / res.rated)}. Hours over 100 %: ${res.totalOver.length ? hourRange(res.totalOver) : 'none'}. Hours above ${inv.warn} %: ${res.high.length ? hourRange(res.high) : 'none'}.`);
+    if (three) {
+      const kMax = H.PH.find(k => res.peakPh[k] === Math.max(res.peakPh.L1, res.peakPh.L2, res.peakPh.L3));
+      step('Step 4 – Load on each phase (three-phase inverter)',
+        'L1(h), L2(h), L3(h) = sum of single-phase loads on that phase + ⅓ of each three-phase load;  imbalance = highest phase − lowest phase',
+        `Highest: ${kMax} ${kw(res.peakPh[kMax])} kW at ${H.ampm(res.peakPhHour[kMax])} against the ${kw(LIM.pl)} kW per-phase limit (${pct(res.peakPh[kMax] / LIM.pl)}). Peaks: L1 ${kw(res.peakPh.L1)}, L2 ${kw(res.peakPh.L2)}, L3 ${kw(res.peakPh.L3)} kW. Largest imbalance ${kw(res.peakImb)} kW${LIM.unbal != null ? ` against the ${kw(LIM.unbal)} kW limit` : ' (no limit entered)'}.`);
+    }
+    const sH = res.hours.slice().sort((a, b) => b.surgePeak - a.surgePeak)[0];
+    step(`Step ${three ? 5 : 4} – Motor starting surge`,
+      `Starting load = L(h) + (starting multiplier − 1) × rating of one unit of the largest motor running;  limit = surge × rated = ${inv.surge} × ${inv.kw} kW = ${(inv.kw * inv.surge).toFixed(1)} kW${three ? `;  per phase: ${kw(LIM.ppk)} kW` : ''}`,
+      sH && sH.on.length ? `Worst hour ${H.hh(sH.h)}–${H.hh(sH.h + 1)}: ${kw(sH.total)} kW + ${kw(sH.extra)} kW (${sH.extraName} starting) = ${kw(sH.surgePeak)} kW → ${sH.surgeOver ? 'ABOVE the surge capability' : 'within the surge capability'}.` : '');
+    step(`Step ${three ? 6 : 5} – Daily energy`,
+      'E (kWh/day) = sum of (P × duty factor × hours per day) ÷ 1000;  duty factor and hours per day affect energy only, not the peak',
+      `Total ${res.energy.toFixed(2)} kWh/day: ${res.eDay.toFixed(2)} kWh 6 AM–6 PM and ${res.eNight.toFixed(2)} kWh 6 PM–6 AM. About ${Math.round(res.energy * 30)} kWh per month (30 days).`);
+    {
+      const est = H.touSplit(res.eHour), m30 = x => Math.round(x * 30);
+      step(`Step ${three ? 7 : 6} – Energy by time-of-use period`,
+        'Day 5:30 AM–6:30 PM, Peak 6:30 PM–10:30 PM, Off-peak 10:30 PM–5:30 AM (the half hours at 5:30, 6:30 PM and 10:30 PM are split equally)',
+        `From appliances: Day ${m30(est.day)}, Peak ${m30(est.peak)}, Off-peak ${m30(est.off)} kWh/month.${(H.touOn(c) || H.hasTouValues(c)) ? ` Customer's bill: Day ${c.touDay || '—'}, Peak ${c.touPeak || '—'}, Off-peak ${c.touOff || '—'} kWh/month.` : ''} See section 8.`);
+    }
+    const nd = rec.need;
+    const reqParts = [`running peak ${kw(res.peak)} × ${(1 + inv.margin / 100).toFixed(2)} = ${nd.run.toFixed(2)} kW`, `starting peak ${nd.surge.toFixed(2)} kW ÷ ${inv.surge} = ${(nd.surge / inv.surge).toFixed(2)} kW`];
+    if (three) reqParts.push(`highest phase ${kw(Math.max(res.peakPh.L1, res.peakPh.L2, res.peakPh.L3))} × ${(1 + inv.margin / 100).toFixed(2)} = ${nd.phase.toFixed(2)} kW per phase`);
+    step(`Step ${three ? 8 : 7} – Inverter size`,
+      `Required capacity = the largest of the running peak × (1 + margin), the starting peak ÷ surge factor${three ? ' and the per-phase need against the datasheet per-phase rating' : ''}`,
+      `${reqParts.join(';  ')}. Recommended: ${rec.label} (set by ${rec.driverText}).`);
+
+    // ===== 6. appliances =====
+    section('6. Appliance schedule');
+    const aCols = fit([{ h: '#', w: 5, align: 'center' }, { h: 'Appliance', w: three ? 34 : 38 }, { h: 'Qty', w: 7, align: 'center' }, { h: 'On at once', w: 9, align: 'center' }, { h: 'W each', w: 11, align: 'right' },
+      { h: 'Running W', w: 12, align: 'right' }, { h: 'Hours of use', w: 30 }, { h: 'h/day', w: 9.5, align: 'center' }, { h: 'Duty', w: 9, align: 'center' }, { h: 'kWh/day', w: 12.5, align: 'right' },
+      ...(three ? [{ h: 'Phase', w: 9, align: 'center' }] : []), { h: 'Cut', w: 7, align: 'center' }, { h: 'Move', w: 8, align: 'center' }]);
+    const aRows = P.appliances.map((a, i) => [i + 1, a.name + (H.inScope(a, inv) ? '' : ' (not checked)'), a.qty, a.qtyOn, n0(a.w), n0(H.runW(a)), H.slotsText(a.hrs) || '—', a.hpd, Math.round(a.d * 100) + '%',
+      (H.runW(a) * a.d * a.hpd / 1000).toFixed(2), ...(three ? [a.ph === '3P' ? '3-ph' : (a.ph || 'L1')] : []), a.b ? 'Yes' : 'No', a.f ? 'Yes' : 'No']);
+    const totRun = scoped.reduce((s, a) => s + H.runW(a), 0);
+    aRows.push(['', 'Total (appliances checked)', '', '', '', n0(totRun), '', '', '', res.energy.toFixed(2), ...(three ? [''] : []), '', '']);
+    table(aCols, aRows, { keepLast: true, fs: 6.9, rowFill: i => i === aRows.length - 1 ? 'E8EDF5' : (i % 2 ? 'F8F9FC' : null), bold: i => i === aRows.length - 1, color: (i) => (i < P.appliances.length && !H.inScope(P.appliances[i], inv)) ? MUTED : INK });
+    para('On at once = units used at the same time. Running W = on at once × W each, the most this entry adds to any hour. Cut = needed during power cuts. Move = the customer can use it at another time. The total running load is not the peak, because appliances are not all on in the same hour (see section 7).', { size: 7.2, color: MUTED });
+
+    // ===== 7. hour by hour =====
+    section('7. Hour-by-hour load');
+    const hCols = fit(three
+      ? [{ h: 'Time', w: 17 }, { h: 'Load (kW)', w: 11, align: 'right' }, { h: 'Load %', w: 11, align: 'right' }, { h: 'L1 (kW)', w: 10, align: 'right' }, { h: 'L2 (kW)', w: 10, align: 'right' }, { h: 'L3 (kW)', w: 10, align: 'right' }, { h: 'Imbal. (kW)', w: 11, align: 'right' }, { h: 'Status', w: 21, align: 'center' }, { h: 'Appliances operating', w: 81 }]
+      : [{ h: 'Time', w: 18 }, { h: 'Load (kW)', w: 13, align: 'right' }, { h: 'Load %', w: 12, align: 'right' }, { h: 'Status', w: 20, align: 'center' }, { h: 'Appliances operating', w: 119 }]);
+    const hRows = res.hours.map(st => [`${H.hh(st.h)}–${H.hh(st.h + 1)}`, kw(st.total), pct(st.loading), ...(three ? [kw(st.ph.L1), kw(st.ph.L2), kw(st.ph.L3), kw(st.imb)] : []),
+      st.label + (st.surgeOver ? ' / SURGE' : ''), st.on.map(o => `${o.name}${o.n > 1 ? ' ×' + o.n : ''} ${fmtW(o.p)}${three ? ' ' + o.ph : ''}`).join(', ') || '—']);
+    const stCol = three ? 7 : 3;
+    table(hCols, hRows, {
+      fs: 6.6,
+      rowFill: i => res.hours[i].status === 'over' ? 'FDE8E8' : res.hours[i].status === 'high' ? 'FFF6DC' : (i % 2 ? 'F8F9FC' : null),
+      bold: (i, j) => j === stCol || j === 1,
+      color: (i, j) => j === stCol && res.hours[i].status === 'over' ? 'C62828' : (three && j >= 3 && j <= 5 && res.hours[i].why.includes(H.PH[j - 3])) || (three && j === 6 && res.hours[i].why.includes('unbal')) ? 'C62828' : INK,
+      cellFill: (i, j) => (three && j >= 3 && j <= 5 && res.hours[i].why.includes(H.PH[j - 3])) || (three && j === 6 && res.hours[i].why.includes('unbal')) ? 'F7C6C6' : null
+    });
+
+    // ===== 8. TOU =====
+    section('8. Energy by time-of-use period');
+    {
+      const est = H.touSplit(res.eHour), bill = H.touOn(c) || H.hasTouValues(c);
+      const rows = H.TOU_PERIODS.map((p, i) => { const e = [est.day, est.peak, est.off][i] * 30, b = parseFloat(c[p.k]); return [p.label, p.time, Math.round(e), ...(bill ? [isFinite(b) ? b : '—', isFinite(b) && b > 0 ? ((e - b) / b * 100 > 0 ? '+' : '') + Math.round((e - b) / b * 100) + '%' : ''] : [])]; });
+      table(fit([{ h: 'Period', w: 20 }, { h: 'Time', w: 34 }, { h: 'From appliances (kWh/month)', w: 30, align: 'right' }, ...(bill ? [{ h: "Customer's bill (kWh/month)", w: 30, align: 'right' }, { h: 'Difference', w: 20, align: 'right' }] : [])]), rows, { fs: 7.6 });
+      if (bill) para('A large difference usually means some appliances or hours are missing from the form, or the bill month was unusual.', { size: 7.2, color: MUTED });
+    }
+
+    // ===== sign-off =====
+    ensure(30);
+    y += 4;
+    para('Notes: the peak check uses the full rating of every unit used at the same time, for each hour it is on. Verify inverter selection against the manufacturer datasheet before finalising the design.', { size: 7.4, color: MUTED });
+    y += 6;
+    const sw = (CW - 10) / 3;
+    [['Prepared by', P.prep.by], ['Checked by', ''], ['Date', repDate]].forEach(([l, val], i) => {
+      const x = M + i * (sw + 5);
+      if (val) d.text(x, y + 6, val, { size: 8.6, color: INK });
+      d.line(x, y + 8, x + sw, y + 8, { color: '33415C', width: 0.3 });
+      d.text(x, y + 11.5, l, { size: 7.2, color: MUTED });
+    });
+    y += 14;
+
+    // ===== footer on every page =====
+    const total = d.pageCount;
+    for (let i = 1; i <= total; i++) {
+      d.setPage(i);
+      d.line(M, FOOT_RULE, 210 - M, FOOT_RULE, { color: '9AA5B8', width: 0.25 });
+      let fy = FOOT_RULE + 3.6;
+      d.text(M, fy, 'Load calculation for system design. Verify against the inverter datasheet and site conditions before construction.', { size: FOOT_FS, color: MUTED });
+      d.text(210 - M, fy, `Page ${i} of ${total}`, { size: FOOT_FS, color: MUTED, align: 'right' });
+      fy += FOOT_LH; d.text(M, fy, H.copyright(), { size: FOOT_FS, bold: true, color: INK });
+      noticeLines.forEach(l => { fy += FOOT_LH; d.text(M, fy, l, { size: FOOT_FS, color: MUTED }); });
+      fy += FOOT_LH; d.text(M, fy, H.COMPANY_LINE, { size: FOOT_FS, bold: true, color: INK });
+    }
+    return d.output({ title: `Load calculation report - ${c.name || 'Customer'}`, author: P.prep.by || H.COMPANY.name, creator: 'Regen Hybrid Load Calculator' });
+  }
+  const reportName = () => `Regen_LoadReport_${H.safeName(P.customer.name)}_${H.today()}.pdf`;
+  async function doReport(mode, btn) {
+    if (!P.appliances.length) { toast('Add appliances first'); return; }
+    const old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+    try {
+      const bytes = await buildReport(P);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      if (mode === 'share') { const r = await H.shareFile(reportName(), blob, 'application/pdf', 'Load calculation report', reportName()); if (r === 'downloaded') toast('Report saved to Downloads'); }
+      else { H.download(reportName(), blob, 'application/pdf'); toast('Report downloaded'); }
+    } catch (err) { console.error(err); toast('Could not create the report: ' + err.message); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+  }
+  $('#anaOut').addEventListener('click', e => {
+    const b = e.target.closest('[data-rep]'); if (!b) return;
+    if (b.dataset.rep === 'xl') $('#bExcel').click(); else doReport(b.dataset.rep, b);
+  });
+
+  // ---------- full backup / restore (all projects and settings on this device) ----------
+  const BACKUP_TYPE = 'regen-hybrid-load-backup';
+  function makeBackup() {
+    persistNow();
+    const idx = H.store.get('projects', []) || [];
+    const projects = idx.map(x => H.store.get('p_' + x.id)).filter(Boolean);
+    return { type: BACKUP_TYPE, v: 1, created: new Date().toISOString(), engineer: H.store.get('engineer', ''), models: models(), cloudUrl: H.store.get('cloud_url', ''), projects };
+  }
+  async function doBackup(mode) {
+    const b = makeBackup();
+    if (!b.projects.length && !b.models.length) { toast('Nothing to back up yet'); return; }
+    const name = `Regen_LoadCalc_Backup_${H.today()}.json`;
+    const data = JSON.stringify(b);
+    if (mode === 'share') { const r = await H.shareFile(name, data, 'application/json', 'Load calculator backup', name); if (r === 'downloaded') toast('Backup saved to Downloads'); }
+    else { H.download(name, data, 'application/json'); toast(`Backup downloaded – ${b.projects.length} project${b.projects.length === 1 ? '' : 's'}`); }
+    H.store.set('last_backup', new Date().toISOString());
+  }
+  // merge: never deletes; a project on this device is replaced only by a newer copy of the same project
+  function restoreBackup(bk) {
+    let added = 0, updated = 0, kept = 0, failed = 0, mAdded = 0;
+    const idx = H.store.get('projects', []) || [];
+    const byId = new Map(idx.map(x => [x.id, x]));
+    for (const raw of (bk.projects || [])) {
+      if (!raw || !raw.id) continue;
+      const p = normProject(raw);
+      const mine = H.store.get('p_' + p.id);
+      if (mine && new Date(mine.updated || 0) >= new Date(p.updated || 0)) { kept++; continue; }
+      if (!H.store.set('p_' + p.id, p)) { failed++; continue; }
+      mine ? updated++ : added++;
+      byId.set(p.id, { id: p.id, name: p.customer.name || 'Untitled project', ref: p.prep.ref, formRef: p.formRef || '', updated: p.updated, n: p.appliances.length });
+    }
+    const list = [...byId.values()].sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0));
+    H.store.set('projects', list);
+    const ms = models();
+    (bk.models || []).forEach(m => { if (m && m.name && !ms.some(x => x.name === m.name)) { ms.push(m); mAdded++; } });
+    if (mAdded) H.store.set('models', ms);
+    if (bk.engineer && !H.store.get('engineer', '')) H.store.set('engineer', bk.engineer);
+    if (bk.cloudUrl && !H.store.get('cloud_url', '')) H.store.set('cloud_url', bk.cloudUrl);
+    const cur = H.store.get('p_' + P.id); if (cur) P = normProject(cur);
+    show(view);
+    modal(`<h3>Backup restored</h3><ul style="margin:0 0 6px;padding-left:18px">
+      <li><b>${added}</b> project${added === 1 ? '' : 's'} added</li><li><b>${updated}</b> updated with a newer copy</li><li><b>${kept}</b> kept – the copy on this device was the same or newer</li>
+      ${mAdded ? `<li><b>${mAdded}</b> inverter model${mAdded === 1 ? '' : 's'} added</li>` : ''}${failed ? `<li style="color:var(--bad)"><b>${failed}</b> could not be saved – this device's storage is full. Delete old projects and restore again.</li>` : ''}</ul>
+      <p class="hint" style="margin:0">Nothing on this device was deleted.</p><div class="acts"><button class="btn primary" data-close>OK</button></div>`);
+  }
+  function persistNow() {
+    P.updated = new Date().toISOString();
+    H.store.set('p_' + P.id, P); H.store.set('current', P.id);
+    const idx = (H.store.get('projects', []) || []).filter(x => x.id !== P.id);
+    if (P.appliances.length || P.customer.name) idx.unshift({ id: P.id, name: P.customer.name || 'Untitled project', ref: P.prep.ref, formRef: P.formRef || '', updated: P.updated, n: P.appliances.length });
+    H.store.set('projects', idx.slice(0, 200));
+  }
+
   // ---------- files ----------
   let importMode = 'any';
   $('#bOpen').addEventListener('click', () => { importMode = 'any'; $('#fileIn').value = ''; $('#fileIn').click(); });
@@ -836,7 +1239,8 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     if (d && d.type === H.PROJECT_TYPE) {
       P = normProject(d); undoApps = null; undoPhases = null; selHour = null; openSet.clear(); persist(); updateLive(); show('ana'); toast('Project opened'); return;
     }
-    throw new Error('This file is not a Regen load form or project file.');
+    if (d && d.type === BACKUP_TYPE) { restoreBackup(d); return; }
+    throw new Error('This file is not a Regen load form, project or backup file.');
   }
   $('#bSave').addEventListener('click', async () => {
     persist();
@@ -846,11 +1250,17 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
   });
   $('#bProjects').addEventListener('click', () => {
     const list = (H.store.get('projects', []) || []);
-    const m = modal(`<h3>Projects on this device</h3><div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn primary sm" id="pNew">+ New project</button></div>
+    const lastB = H.store.get('last_backup', '');
+    const m = modal(`<h3>Projects on this device</h3>
+      <div class="bkbox"><div><b>Backup</b><p class="small muted" style="margin:2px 0 0">One file with every project, saved inverter models and settings on this device. ${lastB ? 'Last backup: ' + esc(new Date(lastB).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })) + '.' : 'No backup made on this device yet.'}</p></div>
+        <div class="repacts"><button class="btn sm gold" id="bkDl">Back up all projects</button><button class="btn sm" id="bkShare">Share backup</button><button class="btn sm" id="bkRestore">Restore backup</button></div></div>
+      <div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn primary sm" id="pNew">+ New project</button></div>
       <div class="plist">${list.map(x => `<div class="pi" data-id="${x.id}"><div><b>${esc(x.name)}</b><span class="small muted">${esc(x.ref || '')} ${x.n || 0} appliances · ${new Date(x.updated).toLocaleDateString()}</span></div>
         ${x.id === P.id ? '<span class="pill info">Open</span>' : '<button class="btn sm" data-o>Open</button>'}<button class="btn sm danger" data-d aria-label="Delete">Delete</button></div>`).join('') || '<p class="muted">No saved projects yet.</p>'}</div>
-      <p class="hint">Projects are stored in this browser only. Use “Save file” to keep a copy or share it with the team.</p><div class="acts"><button class="btn" data-close>Close</button></div>`);
+      <p class="hint">Projects are stored in this browser only. Back up regularly, and before clearing browser data. Restoring adds projects and keeps the newer copy of each; it never deletes anything.</p><div class="acts"><button class="btn" data-close>Close</button></div>`);
     m.addEventListener('click', e => {
+      if (e.target.id === 'bkDl' || e.target.id === 'bkShare') { doBackup(e.target.id === 'bkShare' ? 'share' : 'dl'); return; }
+      if (e.target.id === 'bkRestore') { m.remove(); importMode = 'any'; $('#fileIn').value = ''; $('#fileIn').click(); return; }
       if (e.target.id === 'pNew') { P = newProject(); persist(); undoApps = null; undoPhases = null; openSet.clear(); m.remove(); updateLive(); show('cust'); toast('New project started'); return; }
       const row = e.target.closest('.pi'); if (!row) return;
       const id = row.dataset.id;
@@ -1300,7 +1710,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
   sizeTop(); updateLive(); refreshBadge(true);
   const startTab = H.store.get('tab') || (P.appliances.length ? 'ana' : 'cust');
   show(['cust', 'apps', 'ana'].includes(startTab) ? startTab : 'cust');
-  window.__hlc = { get P() { return P; }, openData, buildWorkbook, show };   // used by automated tests
+  window.__hlc = { get P() { return P; }, openData, buildWorkbook, buildReport, show };   // used by automated tests
   // offline cache limited to this app's folder (other apps share udithapana.github.io)
   if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {}));
 })();
