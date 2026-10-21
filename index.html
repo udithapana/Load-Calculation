@@ -46,6 +46,10 @@
 .imsg.err{background:var(--bad-soft);color:var(--bad)}
 .imsg.ok{background:var(--ok-soft);color:var(--ok)}
 .imsg.info{background:#eef3fb;color:var(--navy-2)}
+.toutbl{border-collapse:collapse;margin-top:8px;min-width:320px;font-size:13.5px}
+.toutbl th{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);text-align:left;padding:6px 14px 6px 0;border-bottom:1px solid var(--line)}
+.toutbl td{padding:6px 14px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.tt{display:block;font-weight:500;font-size:11.5px;color:var(--muted)}
 .import{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--gold-soft);border:1px solid #f0d58c;border-radius:var(--radius);padding:14px;margin-top:16px}
 .import p{margin:0;flex:1;min-width:220px;font-size:14px}
 .sigimg{max-height:70px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:4px}
@@ -192,9 +196,14 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       <div class="fld"><label for="c_account">Account number</label><input id="c_account" type="text" data-c="account"></div>
       <div class="fld"><label for="c_billName">Name on the bill</label><input id="c_billName" type="text" data-c="billName"></div>
       <div class="fld"><label for="c_supply">Supply type</label><select id="c_supply" data-c="supply"><option value="">—</option><option>Single-phase</option><option>Three-phase</option><option>Not sure</option></select></div>
-      <div class="fld"><label for="c_capacity">Connection capacity</label><select id="c_capacity" data-c="capacity"><option value="">—</option><option>15 A</option><option>30 A</option><option>60 A</option><option>Other</option><option>Not sure</option></select></div>
-      <div class="fld"><label for="c_tariff">Tariff</label><select id="c_tariff" data-c="tariff"><option>Domestic</option><option>Religious &amp; charitable</option><option>General purpose</option><option>Industrial</option><option>Other</option></select></div>
-      <div class="fld"><label for="c_units">Avg. monthly units (kWh)</label><input id="c_units" type="number" data-c="units"></div>
+      <div class="fld"><label for="c_capacity">Connection capacity</label><select id="c_capacity" data-c="capacity"></select></div>
+      <div class="fld" id="capOtherWrap" hidden><label for="c_capacityOther">Connection capacity (other)</label><input id="c_capacityOther" type="text" data-c="capacityOther" placeholder="e.g. 3-phase 100 A"></div>
+      <div class="fld"><label for="c_tariff">Tariff category</label><select id="c_tariff" data-c="tariff"></select></div>
+      <div class="fld segf" id="touOptWrap"><span class="lbl">Time-of-use bill</span><div class="seg" id="c_touSeg"><button type="button" data-v="0">No</button><button type="button" data-v="1">Yes</button></div></div>
+      <div class="fld touf"><label for="c_touDay">Day units (kWh/month)<span class="tt">5:30 AM – 6:30 PM</span></label><input id="c_touDay" type="number" data-c="touDay"></div>
+      <div class="fld touf"><label for="c_touPeak">Peak units (kWh/month)<span class="tt">6:30 PM – 10:30 PM</span></label><input id="c_touPeak" type="number" data-c="touPeak"></div>
+      <div class="fld touf"><label for="c_touOff">Off-peak units (kWh/month)<span class="tt">10:30 PM – 5:30 AM</span></label><input id="c_touOff" type="number" data-c="touOff"></div>
+      <div class="fld"><label for="c_units">Avg. monthly units (kWh)</label><input id="c_units" type="number" data-c="units"><span class="hint" id="unitsHint"></span></div>
       <div class="fld"><label for="c_bill">Avg. monthly bill (Rs.)</label><input id="c_bill" type="number" data-c="bill"></div>
       <div class="fld"><label for="c_solar">Existing solar</label><select id="c_solar" data-c="solar"><option>No</option><option>Yes</option></select></div>
       <div class="fld"><label for="c_solarKw">Existing solar (kW)</label><input id="c_solarKw" type="number" data-c="solarKw"></div>
@@ -352,15 +361,34 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
   }
 
   // ---------- customer tab ----------
+  function elecVis() {
+    const c = P.customer, fixed = H.isTouTariff(c.tariff), tou = H.touOn(c) || H.hasTouValues(c);
+    $('#capOtherWrap').hidden = c.capacity !== 'Other';
+    $('#touOptWrap').hidden = fixed;
+    $$('#c_touSeg button').forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === !!c.tou));
+    $$('.touf').forEach(el => el.hidden = !tou);
+    $('#unitsHint').textContent = tou && H.hasTouValues(c) ? `Day + Peak + Off-peak = ${+H.touTotal(c).toFixed(1)} kWh` : '';
+  }
   function renderCustomer() {
-    $$('[data-c]').forEach(el => el.value = P.customer[el.dataset.c] ?? '');
+    const c = P.customer;
+    const caps = H.CAPACITIES.concat(c.capacity && !H.CAPACITIES.includes(c.capacity) ? [c.capacity] : []);   // keep values from older forms (e.g. 15 A)
+    $('#c_capacity').innerHTML = '<option value="">—</option>' + caps.map(o => `<option>${esc(o)}</option>`).join('');
+    $('#c_tariff').innerHTML = H.tariffOptionsHTML(c.tariff, '—');
+    $$('[data-c]').forEach(el => el.value = c[el.dataset.c] ?? '');
+    elecVis();
     $$('[data-p]').forEach(el => el.value = P.prep[el.dataset.p] ?? '');
     const sig = P.customer.signature;
     $('#sigBox').hidden = !sig;
     if (sig) { $('#sigImg').src = sig; $('#sigInfo').textContent = [P.customer.declName, P.customer.declDate].filter(Boolean).join(' · '); }
     $('#formInfo').textContent = P.formSubmitted ? `${P.formRef ? 'Form ' + P.formRef + ' · ' : ''}received ${new Date(P.formSubmitted).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : '';
   }
-  $$('[data-c]').forEach(el => el.addEventListener('input', () => { P.customer[el.dataset.c] = el.value; changed({ ana: false }); }));
+  $$('[data-c]').forEach(el => el.addEventListener('input', () => {
+    const c = P.customer; c[el.dataset.c] = el.value;
+    if (/^tou/.test(el.dataset.c) && H.hasTouValues(c)) { c.units = String(+H.touTotal(c).toFixed(1)); $('#c_units').value = c.units; }
+    if (['capacity', 'tariff'].includes(el.dataset.c) || /^tou/.test(el.dataset.c)) elecVis();
+    changed({ ana: false });
+  }));
+  $('#c_touSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; P.customer.tou = b.dataset.v === '1'; elecVis(); changed({ ana: false }); });
   $$('[data-p]').forEach(el => el.addEventListener('input', () => { P.prep[el.dataset.p] = el.value; if (el.dataset.p === 'by') H.store.set('engineer', el.value); changed({ ana: false }); }));
   $('#bLink').addEventListener('click', async () => {
     const url = new URL('form.html', location.href).href;
@@ -407,7 +435,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
         ${+P.inv.phase === 3 ? `<div class="fld"><span class="lbl">Phase fixed by wiring</span>${yn('phLock', a.phLock)}</div>` : ''}
       </div>
       <div class="fld"><label for="x_${a.id}">Notes</label><input id="x_${a.id}" type="text" data-f="notes" value="${esc(a.notes)}"></div>
-      <div class="acts"><button class="btn sm" type="button" data-act="dup">Duplicate</button><button class="btn sm danger" type="button" data-act="del">Delete</button></div>`;
+      <div class="acts"><button class="btn sm" type="button" data-act="dup" title="Copy this appliance as a separate entry, e.g. for other times">Duplicate</button><button class="btn sm danger" type="button" data-act="del">Delete</button></div>`;
   }
   function renderApps() {
     $('#appCount').textContent = P.appliances.length ? `${P.appliances.length} appliances · connected ${(P.appliances.reduce((s, a) => s + a.qty * a.w, 0) / 1000).toFixed(2)} kW` : '';
@@ -432,7 +460,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       toast(`${a.name || 'Appliance'} deleted`, { label: 'Undo', fn: () => { P.appliances.splice(i, 0, H.normalise(snap)); renderApps(); changed(); } });
       return;
     }
-    if (act === 'dup') { const c = H.normalise(JSON.parse(JSON.stringify(a))); c.id = H.uid(); c.name = a.name + ' (copy)'; P.appliances.splice(P.appliances.indexOf(a) + 1, 0, c); openSet.add(c.id); renderApps(); changed(); return; }
+    if (act === 'dup') { const c = H.normalise(JSON.parse(JSON.stringify(a))); c.id = H.uid(); c.name = H.entryName(P.appliances, a); P.appliances.splice(P.appliances.indexOf(a) + 1, 0, c); openSet.add(c.id); renderApps(); changed(); return; }
     const hc = e.target.closest('.hp-c');
     if (hc) { const h = +hc.dataset.h; a.hrs[h] = a.hrs[h] ? 0 : 1; hc.classList.toggle('on', !!a.hrs[h]); hc.setAttribute('aria-pressed', a.hrs[h] ? 'true' : 'false'); syncHpd(a, body); refreshSum(a); changed(); return; }
     const pre = e.target.closest('[data-pre]');
@@ -483,6 +511,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       const b = e.target.closest('[data-add]'); if (!b) return;
       const a = H.newAppliance(b.dataset.add);
       if (a.k === 'custom') a.name = 'Other appliance';
+      else { const prev = P.appliances.filter(x => x.k === a.k); if (prev.length) a.name = H.entryName(P.appliances, prev[prev.length - 1]); }
       if (+P.inv.phase === 3) a.ph = 'L1';
       P.appliances.push(a); openSet.add(a.id); renderApps(); changed();
       toast(`${a.name} added`);
@@ -710,6 +739,17 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
         <div class="ph"><span class="lbl">Max imbalance</span><br><b class="tnum">${H.fmtKW(res.peakImb)}</b> kW <span class="muted small">${res.unbal != null ? Math.round(res.peakImb / res.unbal * 100) + '% of limit' : 'no limit'}</span>${res.unbal != null ? `<div class="bar"><i class="${res.unbalHours.length ? 'over' : ''}" style="width:${Math.min(100, res.peakImb / res.unbal * 100)}%"></i></div>` : ''}<span class="small muted">highest minus lowest phase</span></div></div>
         <p class="small muted" style="margin:0">Set each appliance's phase in the Appliances tab to match the house wiring.</p></div>`;
     }
+    {
+      const c = P.customer, est = H.touSplit(res.eHour), bill = H.touOn(c) || H.hasTouValues(c);
+      const rows = H.TOU_PERIODS.map((p, i) => {
+        const e = [est.day, est.peak, est.off][i] * 30, b = parseFloat(c[p.k]);
+        const diff = bill && isFinite(b) && b > 0 ? Math.round((e - b) / b * 100) : null;
+        return `<tr><td><b>${p.label}</b><span class="tt">${p.time}</span></td><td class="tnum">${Math.round(e)}</td>${bill ? `<td class="tnum">${isFinite(b) ? b : '—'}</td><td class="tnum">${diff == null ? '' : (diff > 0 ? '+' : '') + diff + '%'}</td>` : ''}</tr>`;
+      }).join('');
+      notes += `<div class="card" style="margin-top:12px"><b>Energy by time-of-use period</b> <span class="muted small">kWh per month (30 days)${c.tariff ? ' · ' + esc(c.tariff) : ''}</span>
+        <div style="overflow-x:auto"><table class="toutbl"><thead><tr><th>Period</th><th>From appliances</th>${bill ? '<th>Customer\'s bill</th><th>Difference</th>' : ''}</tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="small muted" style="margin:6px 0 0">${bill ? 'A large difference usually means some appliances or hours are missing from the form, or the bill month was unusual.' : 'Ask the customer for Day / Peak / Off-peak units if the bill shows them, to check the appliance list against the bill.'}</p></div>`;
+    }
     const tbl = `<div class="tblwrap"><table class="ht"><thead><tr><th>Time</th><th>Load (kW)</th><th>Loading</th>${three ? '<th>L1</th><th>L2</th><th>L3</th><th>Imbal.</th>' : ''}<th>Status</th><th>Appliances operating</th></tr></thead><tbody>${cres.hours.map(st => {
       const pct = st.total / cres.rated; const c = st.status;
       return `<tr class="${c}${selHour === st.h ? ' sel' : ''}" data-h="${st.h}"><td>${H.hh(st.h)}–${H.hh(st.h + 1)}</td><td><b class="${st.why.includes('total') ? 'tbad' : ''}">${H.fmtKW(st.total)}</b></td>
@@ -917,9 +957,14 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     const ar = kv('Installation address', c.address || '—'); sm.height(ar, est(c.address, 45));
     kv('Mobile / email', [c.phone, c.email].filter(Boolean).join(' · ') || '—');
     kv(`${c.utility || 'CEB'} account number`, c.account || '—');
-    kv('Supply type / capacity', [c.supply, c.capacity].filter(Boolean).join(' · ') || '—');
-    kv('Tariff', c.tariff || '—');
+    kv('Supply type / capacity', [c.supply, H.capacityText(c)].filter(Boolean).join(' · ') || '—');
+    kv('Tariff category', c.tariff || '—');
     kv('Average monthly use', c.units || c.bill ? `${c.units || '—'} kWh · Rs. ${c.bill || '—'}` : '—');
+    {
+      const est = H.touSplit(res.eHour), m = x => Math.round(x * 30);
+      if (H.touOn(c) || H.hasTouValues(c)) kv('Time-of-use units (customer\'s bill)', `Day ${c.touDay || '—'} · Peak ${c.touPeak || '—'} · Off-peak ${c.touOff || '—'} kWh/month`);
+      kv('Time-of-use units (estimated from appliances)', `Day ${m(est.day)} · Peak ${m(est.peak)} · Off-peak ${m(est.off)} kWh/month (30 days)`);
+    }
     kv('Existing solar', c.solar === 'Yes' ? `Yes – ${c.solarKw || '?'} kW ${c.solarScheme ? '(' + c.solarScheme + ')' : ''}` : (c.solar || 'No'));
     kv('Power cuts / backup needed', `${c.outages || '—'} · ${c.backupHrs ? c.backupHrs + ' h backup' : 'backup hours not given'}`);
     if (P.formSubmitted) kv('Customer form received', (P.formRef ? P.formRef + ' · ' : '') + new Date(P.formSubmitted).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }));

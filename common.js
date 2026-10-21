@@ -191,10 +191,66 @@ const HLC = (() => {
   }
   const USE_LABEL = { daily: 'Every day', weekdays: 'Weekdays', weekends: 'Weekends', occasional: 'Occasionally' };
 
+  // ---------- electricity connection: capacity, tariff and TOU ----------
+  const CAPACITIES = ['30 A', '60 A', 'Other', 'Not sure'];
+  // same category names as the Site Inspection app
+  const TARIFF_GROUPS = [
+    ['Domestic & religious', ['Domestic', 'Religious']],
+    ['General purpose', ['GP 1 Small', 'GP 2 Medium', 'GP 3 Large']],
+    ['Hotel', ['H 1 Small', 'H 2 Medium', 'H 3 Large']],
+    ['Industrial', ['IP 1 Small', 'IP 2 Medium', 'IP 3 Large']],
+    ['Government', ['GV 1 Small', 'GV 2 Medium', 'GV 3 Large']]
+  ];
+  const TARIFFS = TARIFF_GROUPS.flatMap(g => g[1]);
+  // Medium and Large categories are billed by time of use (Day / Peak / Off-peak)
+  const TOU_TARIFFS = TARIFFS.filter(t => /Medium|Large/.test(t));
+  const TOU_PERIODS = [
+    { k: 'touDay', label: 'Day', time: '5:30 AM – 6:30 PM' },
+    { k: 'touPeak', label: 'Peak', time: '6:30 PM – 10:30 PM' },
+    { k: 'touOff', label: 'Off-peak', time: '10:30 PM – 5:30 AM' }
+  ];
+  const isTouTariff = t => TOU_TARIFFS.includes(t);
+  const touOn = c => !!c && (isTouTariff(c.tariff) || !!c.tou);
+  const touTotal = c => TOU_PERIODS.reduce((s, p) => s + (parseFloat(c[p.k]) || 0), 0);
+  const hasTouValues = c => TOU_PERIODS.some(p => String(c[p.k] ?? '') !== '');
+  function capacityText(c) {
+    if (!c || !c.capacity) return '';
+    return c.capacity === 'Other' ? (String(c.capacityOther || '').trim() || 'Other (not specified)') : c.capacity;
+  }
+  function tariffOptionsHTML(cur, placeholder) {
+    const known = TARIFFS.includes(cur) || cur === 'Not sure' || !cur;
+    return (placeholder ? `<option value="">${placeholder}</option>` : '') +
+      TARIFF_GROUPS.map(([g, list]) => `<optgroup label="${g}">${list.map(t => `<option${t === cur ? ' selected' : ''}>${t}</option>`).join('')}</optgroup>`).join('') +
+      `<option${cur === 'Not sure' ? ' selected' : ''}>Not sure</option>` +
+      (known ? '' : `<option selected>${esc(cur)}</option>`);
+  }
+  // daily kWh per CEB TOU period from an hourly energy profile (hour h = h:00–h+1:00; half hours at 5:30, 18:30, 22:30)
+  function touSplit(eHour) {
+    const w = { day: new Array(24).fill(0), peak: new Array(24).fill(0), off: new Array(24).fill(0) };
+    for (let h = 0; h < 24; h++) {
+      if (h >= 6 && h <= 17) w.day[h] = 1;
+      else if (h >= 19 && h <= 21) w.peak[h] = 1;
+      else if (h === 5) { w.off[h] = 0.5; w.day[h] = 0.5; }
+      else if (h === 18) { w.day[h] = 0.5; w.peak[h] = 0.5; }
+      else if (h === 22) { w.peak[h] = 0.5; w.off[h] = 0.5; }
+      else w.off[h] = 1;
+    }
+    const sum = k => eHour.reduce((s, e, h) => s + e * w[k][h], 0);
+    return { day: sum('day'), peak: sum('peak'), off: sum('off') };
+  }
+  // name for another entry of the same appliance (used at other times): "Ceiling fan (2)"
+  function entryName(apps, a) {
+    const base = String(a.name || '').replace(/\s\(\d+\)$/, '');
+    const used = new Set(apps.filter(x => x.k === a.k && String(x.name || '').replace(/\s\(\d+\)$/, '') === base).map(x => (String(x.name).match(/\((\d+)\)$/) || [0, 1])[1] * 1));
+    let n = 2; while (used.has(n)) n++;
+    return `${base} (${n})`;
+  }
+
   function emptyCustomer() {
     return {
       name: '', phone: '', email: '', address: '',
-      utility: 'CEB', account: '', billName: '', supply: '', capacity: '', tariff: 'Domestic',
+      utility: 'CEB', account: '', billName: '', supply: '', capacity: '', capacityOther: '', tariff: 'Domestic',
+      tou: false, touDay: '', touPeak: '', touOff: '',
       units: '', bill: '', solar: 'No', solarKw: '', solarScheme: '', outages: '', backupHrs: '', notes: '',
       declName: '', declDate: '', signature: ''
     };
@@ -679,6 +735,7 @@ const HLC = (() => {
     newAppliance, normalise, emptyCustomer, defaultInverter, inScope, runW, phaseLimitW, limits, PH, hourState, severity,
     analyse, planShift, groupMoves, recommendInverter, autoBalance, planPhases, phaseChartSVG, chartSVG, svgToPng, LIGHT_PAL,
     configUrl, validScriptUrl, cloudPost,
+    CAPACITIES, TARIFF_GROUPS, TARIFFS, TOU_TARIFFS, TOU_PERIODS, isTouTariff, touOn, touTotal, hasTouValues, capacityText, tariffOptionsHTML, touSplit, entryName,
     hourPickerHTML, applyPreset, PHASE_COL, download, shareFile, safeName, today
   };
 })();

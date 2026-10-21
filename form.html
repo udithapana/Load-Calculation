@@ -58,6 +58,12 @@
 .done-acts{display:flex;flex-direction:column;gap:8px}
 .done-acts .btn{justify-content:flex-start}
 .solar-extra[hidden]{display:none}
+.toubox{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:8px;padding:12px;background:#fbfcfe}
+.toubox:has(#touOptWrap[hidden]):has(#touFields[hidden]){display:none}
+.tougrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 14px}
+.tt{display:block;font-weight:500;font-size:11.5px;color:var(--muted)}
+.again{align-self:flex-start}
+.item-add .times{font-size:11.5px;font-weight:800;color:var(--navy-2);margin-left:auto;margin-right:6px}
 .sentban{margin-top:14px;border:1px solid #b9dcc6;background:var(--ok-soft);color:#1e5a37;border-radius:var(--radius);padding:10px 14px;font-size:14px;display:block}
 .sentban .btn{margin-left:6px}
 .big-btn{width:100%;min-height:50px;font-size:16px}
@@ -93,6 +99,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   .opt{display:inline-block;margin-right:3mm;white-space:nowrap}
   .opt::before{content:"";display:inline-block;width:2.6mm;height:2.6mm;border:0.6pt solid #33415c;margin-right:1mm;vertical-align:-0.3mm}
   .opt.sel::before{background:#10264a}
+  .tlist .opt{margin-right:2mm;font-size:8pt}
   .at{width:100%;border-collapse:collapse;font-size:7.6pt;table-layout:fixed}
   .at th,.at td{border:0.4pt solid #9aa5b8;padding:0.6mm 0.8mm;text-align:center;height:5.6mm}
   .at th{background:#10264a;color:#fff;font-weight:600;font-size:7pt}
@@ -147,9 +154,22 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     <div class="fld"><label for="c_account">Electricity account number <span class="req">*</span></label><input id="c_account" type="text" inputmode="numeric" data-c="account"></div>
     <div class="fld"><label for="c_billName">Name on the bill</label><input id="c_billName" type="text" data-c="billName"></div>
     <div class="fld"><label for="c_supply">Supply type</label><select id="c_supply" data-c="supply"><option value="">Select</option><option>Single-phase</option><option>Three-phase</option><option>Not sure</option></select></div>
-    <div class="fld"><label for="c_capacity">Connection capacity</label><select id="c_capacity" data-c="capacity"><option value="">Select</option><option>15 A</option><option>30 A</option><option>60 A</option><option>Other</option><option>Not sure</option></select></div>
-    <div class="fld"><label for="c_tariff">Tariff category</label><select id="c_tariff" data-c="tariff"><option>Domestic</option><option>Religious &amp; charitable</option><option>General purpose</option><option>Industrial</option><option>Other</option></select></div>
-    <div class="fld"><label for="c_units">Average monthly units (kWh)</label><input id="c_units" type="number" inputmode="decimal" min="0" data-c="units"></div>
+    <div class="fld"><label for="c_capacity">Connection capacity</label><select id="c_capacity" data-c="capacity"><option value="">Select</option></select></div>
+    <div class="fld" id="capOtherWrap" hidden><label for="c_capacityOther">Your connection capacity <span class="req">*</span></label><input id="c_capacityOther" type="text" data-c="capacityOther" placeholder="e.g. 3-phase 100 A"></div>
+    <div class="fld"><label for="c_tariff">Tariff category</label><select id="c_tariff" data-c="tariff"></select><span class="hint">Printed on your electricity bill</span></div>
+    <div class="span2 toubox" id="touBox">
+      <label class="check" id="touOptWrap" for="c_tou"><input id="c_tou" type="checkbox"><span>My bill shows Day, Peak and Off-peak units (time-of-use meter)</span></label>
+      <div id="touFields" hidden>
+        <p class="lbl" style="margin:0 0 8px" id="touHead">Average monthly units by time of use (kWh)</p>
+        <div class="tougrid">
+          <div class="fld"><label for="c_touDay">Day <span class="tt">5:30 AM – 6:30 PM</span></label><input id="c_touDay" type="number" inputmode="decimal" min="0" data-c="touDay"></div>
+          <div class="fld"><label for="c_touPeak">Peak <span class="tt">6:30 PM – 10:30 PM</span></label><input id="c_touPeak" type="number" inputmode="decimal" min="0" data-c="touPeak"></div>
+          <div class="fld"><label for="c_touOff">Off-peak <span class="tt">10:30 PM – 5:30 AM</span></label><input id="c_touOff" type="number" inputmode="decimal" min="0" data-c="touOff"></div>
+        </div>
+        <p class="hint" id="touSum" style="margin:6px 0 0"></p>
+      </div>
+    </div>
+    <div class="fld" id="unitsWrap"><label for="c_units">Average monthly units (kWh)</label><input id="c_units" type="number" inputmode="decimal" min="0" data-c="units"></div>
     <div class="fld"><label for="c_bill">Average monthly bill (Rs.)</label><input id="c_bill" type="number" inputmode="decimal" min="0" data-c="bill"></div>
     <div class="fld"><span class="lbl">Do you already have solar panels?</span><div class="seg" data-seg="solar"><button type="button" data-v="No">No</button><button type="button" data-v="Yes">Yes</button></div></div>
     <div class="fld solar-extra"><label for="c_solarKw">Existing solar size (kW)</label><input id="c_solarKw" type="number" inputmode="decimal" min="0" data-c="solarKw"></div>
@@ -161,7 +181,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   </div>
 
   <div class="sec-h"><span class="step">3</span><h2>Your appliances</h2></div>
-  <p class="muted small" style="margin:0 0 10px">Tap an appliance to add it, then tell us how many you have and the hours you usually use it. If you know the power rating from the label (W or kW), change the typical value we show.</p>
+  <p class="muted small" style="margin:0 0 10px">Tap an appliance to add it, then tell us how many you have and the hours you usually use it. If you know the power rating from the label (W or kW), change the typical value we show. If you use a different number of the same appliance at different times (for example 3 fans in the evening but 1 at night), tap it again or use “Add for other times” to make a separate entry for each time.</p>
   <div class="cats" id="cats"></div>
   <div class="alist" id="alist"></div>
   <div style="margin-top:10px"><button class="btn" type="button" id="addCustom">+ Add an appliance that isn't listed</button></div>
@@ -214,6 +234,11 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   $('#lgCopy').textContent = H.copyright(); $('#lgNotice').textContent = H.NOTICE; $('#lgCo').textContent = H.COMPANY_LINE;
 
   // ---------- customer fields ----------
+  const C0 = state.customer;
+  if (!H.CAPACITIES.includes(C0.capacity)) C0.capacity = '';                       // e.g. "15 A" from an older form
+  if (C0.tariff && !H.TARIFFS.includes(C0.tariff) && C0.tariff !== 'Not sure') C0.tariff = '';
+  $('#c_capacity').insertAdjacentHTML('beforeend', H.CAPACITIES.map(o => `<option>${o}</option>`).join(''));
+  $('#c_tariff').innerHTML = H.tariffOptionsHTML(C0.tariff, 'Select');
   document.querySelectorAll('[data-c]').forEach(el => {
     el.value = state.customer[el.dataset.c] ?? '';
     el.addEventListener('input', () => { state.customer[el.dataset.c] = el.value; save(); });
@@ -226,17 +251,35 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   });
   const solarVis = () => document.querySelectorAll('.solar-extra').forEach(el => el.hidden = state.customer.solar !== 'Yes');
   solarVis();
+  // connection capacity "Other" and time-of-use units
+  const touBox = $('#c_tou');
+  function elecVis() {
+    const c = state.customer, tou = H.touOn(c), fixed = H.isTouTariff(c.tariff);
+    $('#capOtherWrap').hidden = c.capacity !== 'Other';
+    $('#touOptWrap').hidden = fixed;
+    touBox.checked = !!c.tou;
+    $('#touFields').hidden = !tou;
+    $('#touHead').textContent = fixed ? `${c.tariff} is billed by time of use. Average monthly units for each period (kWh):` : 'Average monthly units for each period (kWh):';
+    $('#unitsWrap').hidden = tou;
+    const tot = H.touTotal(c);
+    $('#touSum').textContent = tou && H.hasTouValues(c) ? `Total ${+tot.toFixed(1)} kWh per month` : 'Copy these from your bill. Leave a box empty if you don\'t know.';
+  }
+  function syncUnits() { const c = state.customer; if (H.touOn(c) && H.hasTouValues(c)) { c.units = String(+H.touTotal(c).toFixed(1)); $('#c_units').value = c.units; } }
+  touBox.addEventListener('change', () => { state.customer.tou = touBox.checked; syncUnits(); elecVis(); save(); });
+  ['c_capacity', 'c_tariff', 'c_touDay', 'c_touPeak', 'c_touOff'].forEach(id => $('#' + id).addEventListener('input', () => { syncUnits(); elecVis(); save(); }));
+  elecVis();
   const conf = $('#c_confirm'); conf.checked = !!state.confirm;
   conf.addEventListener('change', () => { state.confirm = conf.checked; save(); });
 
   // ---------- catalogue ----------
   function renderCats() {
     const added = new Set(state.appliances.map(a => a.k));
+    const times = k => state.appliances.filter(a => a.k === k).length;
     const openIds = new Set([...document.querySelectorAll('.cat[open]')].map(d => d.dataset.cat));
     $('#cats').innerHTML = H.CATS.map(c => {
       const n = state.appliances.filter(a => a.cat === c.id).length;
       return `<details class="cat" data-cat="${c.id}"${openIds.has(c.id) ? ' open' : ''}><summary>${H.esc(c.name)}${n ? `<span class="count">${n}</span>` : ''}</summary><div class="items">` +
-        c.items.map(it => `<button type="button" class="item-add${added.has(it.k) && it.k !== 'custom' ? ' added' : ''}" data-add="${it.k}"><b>${H.esc(it.k === 'custom' ? '+ Other appliance (type its name)' : it.n)}</b>${it.w ? `<span>~${it.w >= 1000 ? (it.w / 1000) + ' kW' : it.w + ' W'}</span>` : ''}</button>`).join('') +
+        c.items.map(it => `<button type="button" class="item-add${added.has(it.k) && it.k !== 'custom' ? ' added' : ''}" data-add="${it.k}"><b>${H.esc(it.k === 'custom' ? '+ Other appliance (type its name)' : it.n)}</b>${it.k !== 'custom' && times(it.k) > 1 ? `<span class="times">×${times(it.k)}</span>` : ''}${it.w ? `<span>~${it.w >= 1000 ? (it.w / 1000) + ' kW' : it.w + ' W'}</span>` : ''}</button>`).join('') +
         '</div></details>';
     }).join('');
   }
@@ -246,14 +289,27 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     addItem(b.dataset.add);
   });
   function addItem(k) {
-    const exist = state.appliances.find(a => a.k === k && k !== 'custom');
-    if (exist) { const el = document.querySelector(`.ap[data-id="${exist.id}"]`); el && el.scrollIntoView({ behavior: 'smooth', block: 'center' }); toast('Already added — change the quantity below'); return; }
+    const same = state.appliances.filter(a => a.k === k && k !== 'custom');
+    if (same.length) { addAgain(same[same.length - 1], true); return; }
     const a = H.newAppliance(k);
     state.appliances.push(a);
     save(); renderCats(); renderList();
     const el = document.querySelector(`.ap[data-id="${a.id}"]`);
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (k === 'custom') el.querySelector('[data-f="name"]').focus(); }
     toast(`${a.name || 'Appliance'} added`);
+  }
+  // another entry of the same appliance for a different time slot, with its own quantity and hours
+  function addAgain(src, fromCatalogue) {
+    if (!String(src.name || '').trim()) { toast('Type the appliance name first'); return; }
+    const a = H.newAppliance(src.k);
+    Object.assign(a, { name: H.entryName(state.appliances, src), cat: src.cat, w: src.w, unit: src.unit, t: src.t, s: src.s, d: src.d, b: src.b, f: src.f,
+      qty: src.qty, qtyOn: 1, hrs: H.emptyHrs(), hpd: 0, hpdManual: false, notes: '' });
+    const lastSame = state.appliances.reduce((i, x, j) => (x.k === src.k && String(x.name).replace(/\s\(\d+\)$/, '') === String(src.name).replace(/\s\(\d+\)$/, '') ? j : i), state.appliances.indexOf(src));
+    state.appliances.splice(lastSame + 1, 0, H.normalise(a));
+    save(); renderCats(); renderList();
+    const el = document.querySelector(`.ap[data-id="${a.id}"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast(`${a.name} added${fromCatalogue ? ' as a separate entry' : ''} – tap the hours for this time`);
   }
 
   // ---------- appliance cards ----------
@@ -264,7 +320,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     return `<div class="ap" data-id="${a.id}">
       <div class="ap-h"><div class="nm">${a.k === 'custom'
         ? `<label class="lbl" for="n_${a.id}">Appliance name</label><input id="n_${a.id}" type="text" data-f="name" value="${H.esc(a.name)}" placeholder="e.g. Pressure cooker">`
-        : `<b>${H.esc(a.name)}</b><div class="muted">${H.esc(H.CAT_NAME[a.cat] || '')}</div>`}</div>
+        : `<b>${H.esc(a.name)}</b><div class="muted">${H.esc(H.CAT_NAME[a.cat] || '')}${/\(\d+\)$/.test(a.name) ? ' · separate entry for another time' : ''}</div>`}</div>
         <button type="button" class="x" data-act="del" aria-label="Remove ${H.esc(a.name || 'appliance')}">×</button></div>
       <div class="ap-g">
         <div class="fld"><span class="lbl">How many do you have?</span><div class="step"><button type="button" data-act="q-">−</button><input type="number" inputmode="numeric" min="0" data-f="qty" value="${a.qty}" aria-label="Quantity"><button type="button" data-act="q+">+</button></div></div>
@@ -281,6 +337,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
         <div class="q"><span class="lbl">Could you use it at a different time if needed?</span><div class="seg" data-yn="f"><button type="button" data-v="1" class="${a.f ? 'on' : ''}">Yes</button><button type="button" data-v="0" class="${!a.f ? 'on' : ''}">No</button></div></div>
       </div>
       <div class="fld"><label class="lbl" for="t_${a.id}">Notes (optional)</label><input id="t_${a.id}" type="text" data-f="notes" value="${H.esc(a.notes)}" placeholder="Brand/model, room, or anything special about how you use it"></div>
+      <button type="button" class="btn sm again" data-act="again">+ Add for other times</button>
     </div>`;
   }
   function renderList() {
@@ -293,6 +350,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     const card = e.target.closest('.ap');
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (act === 'del') { state.appliances = state.appliances.filter(x => x !== a); save(); renderCats(); renderList(); return; }
+    if (act === 'again') { addAgain(a, false); return; }
     if (act && /^[qo][+-]$/.test(act)) {
       const f = act[0] === 'q' ? 'qty' : 'qtyOn', d = act[1] === '+' ? 1 : -1;
       a[f] = Math.max(0, a[f] + d);
@@ -352,6 +410,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     if (!c.phone.trim()) e.push('Enter your mobile number (step 1).');
     if (!c.address.trim()) e.push('Enter the installation address (step 1).');
     if (!c.account.trim()) e.push('Enter your electricity account number (step 2).');
+    if (c.capacity === 'Other' && !String(c.capacityOther || '').trim()) e.push('Enter your connection capacity, or choose “Not sure” (step 2).');
     if (!state.appliances.length) e.push('Add at least one appliance (step 3).');
     state.appliances.forEach(a => {
       const nm = a.name || 'An appliance';
@@ -464,14 +523,15 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
         <tr><td class="k">Account number</td><td>${v('account')}</td></tr>
         <tr><td class="k">Name on the bill</td><td>${v('billName')}</td></tr>
         <tr><td class="k">Supply type</td><td>${optList(['Single-phase', 'Three-phase', 'Not sure'], c.supply)}</td></tr>
-        <tr><td class="k">Connection capacity</td><td>${optList(['15 A', '30 A', '60 A', 'Other', 'Not sure'], c.capacity)}</td></tr>
-        <tr><td class="k">Tariff category</td><td>${blank ? optList(['Domestic', 'Religious & charitable', 'General purpose', 'Other'], '') : v('tariff')}</td></tr>
+        <tr><td class="k">Connection capacity</td><td>${blank ? optList(['30 A', '60 A', 'Not sure'], '') + 'Other: __________' : H.esc(H.capacityText(c) || '—')}</td></tr>
+        <tr><td class="k">Tariff category</td><td>${blank ? '<span class="tlist">' + H.TARIFFS.map(t => `<span class="opt">${t.replace(/ (Small|Medium|Large)$/, '')}</span>`).join('') + '</span>' : v('tariff')}</td></tr>
         <tr><td class="k">Avg. monthly units / bill</td><td>${blank ? '__________ kWh &nbsp;&nbsp; Rs. __________' : `${v('units') || '—'} kWh &nbsp;·&nbsp; Rs. ${v('bill') || '—'}`}</td></tr>
+        ${blank || H.touOn(c) ? `<tr><td class="k">Time-of-use units (kWh / month)</td><td>${blank ? 'Day ______ &nbsp; Peak ______ &nbsp; Off-peak ______ <span style="color:#5b6680">(TOU bills only)</span>' : `Day ${v('touDay') || '—'} · Peak ${v('touPeak') || '—'} · Off-peak ${v('touOff') || '—'}`}</td></tr>` : ''}
         <tr><td class="k">Existing solar</td><td>${optList(['No', 'Yes'], blank ? '' : c.solar)} ${blank ? '_____ kW &nbsp; Scheme: __________' : (c.solar === 'Yes' ? `${v('solarKw')} kW · ${v('solarScheme')}` : '')}</td></tr>
         <tr><td class="k">Power cuts</td><td>${optList(['Rarely', 'A few times a month', 'Every week', 'Every day'], c.outages)}</td></tr>
         <tr><td class="k">Backup needed</td><td>${blank ? '__________ hours' : `${v('backupHrs') || '—'} hours`}</td></tr>
       </table></div></div>`;
-    const inst = `<p class="pinst"><b>How to fill in the appliance table:</b> for each appliance you have, write how many you have, how many are used at the same time and the power rating from the label (W or kW). Shade or tick each hour box when the appliance is normally on (for example, a TV used from 7 PM to 10 PM: tick 7p, 8p and 9p). Write Y or N for "Needed in power cut" and "Can change time".</p>`;
+    const inst = `<p class="pinst"><b>How to fill in the appliance table:</b> for each appliance you have, write how many you have, how many are used at the same time and the power rating from the label (W or kW). Shade or tick each hour box when the appliance is normally on (for example, a TV used from 7 PM to 10 PM: tick 7p, 8p and 9p). Write Y or N for "Needed in power cut" and "Can change time". If you use a different number of the same appliance at different times (e.g. 3 fans in the evening, 1 at night), use a spare row at the end for each extra time and write the appliance name again.</p>`;
     // appliance table
     let hdr = `<thead><tr><th rowspan="2" style="width:6mm">#</th><th rowspan="2" style="width:70mm">Appliance <small>(typical W)</small></th><th rowspan="2" style="width:9mm">Qty</th><th rowspan="2" style="width:12mm">Used at same time</th><th rowspan="2" style="width:14mm">Watts each</th>`;
     [['Night', 0], ['Morning', 6], ['Afternoon', 12], ['Evening', 18]].forEach(([n]) => hdr += `<th colspan="6" class="g">${n}</th>`);
@@ -491,8 +551,8 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
         body += `<tr class="cat"><td colspan="32">${H.esc(c2.name)}</td></tr>`;
         c2.items.filter(it => it.k !== 'custom').forEach(it => body += row(H.esc(it.n), it.w >= 1000 ? (it.w / 1000) + ' kW' : it.w + ' W', null));
       });
-      body += `<tr class="cat"><td colspan="32">Other appliances (write the name)</td></tr>`;
-      for (let k = 0; k < 8; k++) body += row('', '', null);
+      body += `<tr class="cat"><td colspan="32">Other appliances, or the same appliance at another time (write the name)</td></tr>`;
+      for (let k = 0; k < 12; k++) body += row('', '', null);
     } else {
       state.appliances.forEach(a => body += row(H.esc(a.name) + (a.notes ? ` <small>– ${H.esc(a.notes)}</small>` : ''), '', a));
     }
