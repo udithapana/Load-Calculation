@@ -31,6 +31,21 @@
 .ht td.pov{color:var(--bad);font-weight:800;background:#fde8e8}
 .phrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0}
 .lgL1{background:#8b5a2b}.lgL2{background:#1c1c1c}.lgL3{background:#8a94a6}
+.topbar .btn .badge,.btn .badge{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;margin-left:6px;border-radius:10px;background:var(--bad);color:#fff;font-size:11.5px;font-weight:800}
+.topbar .btn.gold-outline{border-color:var(--gold)}
+.inbox h3{display:flex;align-items:center;gap:8px}
+.ibar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.ibar .sp{flex:1}
+.ilist{display:flex;flex-direction:column;gap:8px;max-height:58vh;overflow:auto}
+.it{border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center}
+.it.new{border-color:var(--gold);background:#fffaf0}
+.it b{color:var(--navy);font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it .meta{font-size:12.5px;color:var(--muted);grid-column:1}
+.it .acts2{grid-row:1 / span 2;grid-column:2;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.imsg{border-radius:8px;padding:10px 12px;font-size:14px}
+.imsg.err{background:var(--bad-soft);color:var(--bad)}
+.imsg.ok{background:var(--ok-soft);color:var(--ok)}
+.imsg.info{background:#eef3fb;color:var(--navy-2)}
 .import{display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--gold-soft);border:1px solid #f0d58c;border-radius:var(--radius);padding:14px;margin-top:16px}
 .import p{margin:0;flex:1;min-width:220px;font-size:14px}
 .sigimg{max-height:70px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:4px}
@@ -136,6 +151,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     </div>
     <div class="spacer"></div>
     <div class="tb-acts">
+      <button class="btn sm gold-outline" type="button" id="bInbox">Inbox<span class="badge" id="inboxBadge" hidden></span></button>
       <button class="btn sm" type="button" id="bOpen">Open file</button>
       <button class="btn sm" type="button" id="bProjects">Projects</button>
       <button class="btn sm" type="button" id="bSave">Save file</button>
@@ -157,8 +173,9 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
   <!-- CUSTOMER -->
   <section class="pane" id="p-cust" hidden>
     <div class="import">
-      <p><b>Received a customer form?</b> Open the form file the customer sent (WhatsApp or email) to load their details and appliances. For paper forms, type the details here and add the appliances in the next tab.</p>
-      <button class="btn primary" type="button" id="bImport">Open customer form file</button>
+      <p><b>Customer forms:</b> forms submitted online arrive in the Inbox. A customer who sent a form file by WhatsApp or email: open the file. For paper forms, type the details here and add the appliances in the next tab.</p>
+      <button class="btn primary" type="button" id="bInbox2">Open inbox</button>
+      <button class="btn" type="button" id="bImport">Open form file</button>
       <button class="btn" type="button" id="bLink">Send form link to a customer</button>
       <a class="btn" id="bBlank" href="form.html?blank=1" target="_blank" rel="noopener">Print blank paper form</a>
     </div>
@@ -251,6 +268,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
 </main>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="config.js"></script>
 <script src="common.js"></script>
 <script src="xlsx-writer.js"></script>
 <script>
@@ -293,7 +311,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       P.updated = new Date().toISOString();
       H.store.set('p_' + P.id, P); H.store.set('current', P.id);
       const idx = (H.store.get('projects', []) || []).filter(x => x.id !== P.id);
-      idx.unshift({ id: P.id, name: P.customer.name || 'Untitled project', ref: P.prep.ref, updated: P.updated, n: P.appliances.length });
+      idx.unshift({ id: P.id, name: P.customer.name || 'Untitled project', ref: P.prep.ref, formRef: P.formRef || '', updated: P.updated, n: P.appliances.length });
       H.store.set('projects', idx.slice(0, 200));
     }, 300);
   }
@@ -340,7 +358,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     const sig = P.customer.signature;
     $('#sigBox').hidden = !sig;
     if (sig) { $('#sigImg').src = sig; $('#sigInfo').textContent = [P.customer.declName, P.customer.declDate].filter(Boolean).join(' · '); }
-    $('#formInfo').textContent = P.formSubmitted ? `Form received ${new Date(P.formSubmitted).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : '';
+    $('#formInfo').textContent = P.formSubmitted ? `${P.formRef ? 'Form ' + P.formRef + ' · ' : ''}received ${new Date(P.formSubmitted).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : '';
   }
   $$('[data-c]').forEach(el => el.addEventListener('input', () => { P.customer[el.dataset.c] = el.value; changed({ ana: false }); }));
   $$('[data-p]').forEach(el => el.addEventListener('input', () => { P.prep[el.dataset.p] = el.value; if (el.dataset.p === 'by') H.store.set('engineer', el.value); changed({ ana: false }); }));
@@ -753,18 +771,20 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     try { openData(H.parseFileText(await f.text())); }
     catch (err) { modal(`<h3>Could not open the file</h3><p>${esc(err.message)} Choose the .json file from the customer form or a saved project.</p><div class="acts"><button class="btn primary" data-close>OK</button></div>`); }
   });
-  function openData(d) {
+  function openData(d, onApplied) {
     if (d && d.type === H.FORM_TYPE) {
       const fresh = !P.appliances.length && !P.customer.name;
       const apply = () => {
         const p = newProject();
         p.customer = Object.assign(H.emptyCustomer(), d.customer || {});
         p.appliances = (d.appliances || []).map(H.normalise);
-        p.formSubmitted = d.submitted || '';
+        p.formSubmitted = d.received || d.submitted || '';
+        p.formRef = d.ref || '';
         if (/three/i.test(p.customer.supply || '')) { p.inv.phase = 3; p.inv.kw = 10; H.autoBalance(p.appliances, p.inv); }
         P = normProject(p); undoApps = null; undoPhases = null; selHour = null; chartMode = 'now'; openSet.clear();
         persist(); updateLive(); show('ana');
         toast(`Loaded ${P.appliances.length} appliances for ${P.customer.name || 'customer'}`);
+        if (onApplied) onApplied();
       };
       if (fresh) apply();
       else {
@@ -902,7 +922,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     kv('Average monthly use', c.units || c.bill ? `${c.units || '—'} kWh · Rs. ${c.bill || '—'}` : '—');
     kv('Existing solar', c.solar === 'Yes' ? `Yes – ${c.solarKw || '?'} kW ${c.solarScheme ? '(' + c.solarScheme + ')' : ''}` : (c.solar || 'No'));
     kv('Power cuts / backup needed', `${c.outages || '—'} · ${c.backupHrs ? c.backupHrs + ' h backup' : 'backup hours not given'}`);
-    if (P.formSubmitted) kv('Customer form received', new Date(P.formSubmitted).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }));
+    if (P.formSubmitted) kv('Customer form received', (P.formRef ? P.formRef + ' · ' : '') + new Date(P.formSubmitted).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }));
     kv('Prepared by / reference', [P.prep.by, P.prep.ref, P.prep.date].filter(Boolean).join(' · ') || '—');
     r++;
     sec('SELECTED INVERTER  (yellow cells are inputs – change them to re-check)');
@@ -1099,9 +1119,140 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     return wb.build();
   }
 
+  // ---------- customer submissions inbox (Google Sheet via Apps Script) ----------
+  const cloud = {
+    url: () => H.store.get('cloud_url', '') || H.configUrl(),
+    key: () => H.store.get('cloud_key', ''),
+    ready: () => H.validScriptUrl(cloud.url()) && !!cloud.key(),
+    call: (action, data = {}) => H.cloudPost(cloud.url(), Object.assign({ action, key: cloud.key() }, data))
+  };
+  let inboxItems = [], inboxFilter = 'new', lastBadge = 0;
+  const fmtDT = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); };
+  function setBadge(n) { const b = $('#inboxBadge'); b.hidden = !n; b.textContent = n > 99 ? '99+' : String(n); }
+  async function refreshBadge(force) {
+    if (!cloud.ready() || (!force && Date.now() - lastBadge < 60000)) return;
+    lastBadge = Date.now();
+    try { const r = await cloud.call('list', { limit: 200 }); if (r && r.ok) { inboxItems = r.items; setBadge(r.newCount); } } catch (e) { /* offline: keep the last count */ }
+  }
+  function settingsHTML(msg) {
+    const cfg = H.configUrl();
+    return `<h3>Connect to the customer form Sheet</h3>
+      <p class="muted small" style="margin-top:0">Enter the team key from the Apps Script setup. It is saved on this device only.</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="fld"><label for="cUrl">Apps Script web app URL</label><input id="cUrl" type="text" inputmode="url" autocomplete="off" value="${esc(H.store.get('cloud_url', '') || cfg)}" placeholder="https://script.google.com/macros/s/…/exec">
+          <span class="hint">${cfg ? 'Filled in from config.js – the same link the customer form uses.' : 'Also paste this link into config.js so the customer form can submit.'}</span></div>
+        <div class="fld"><label for="cKey">Team key</label><input id="cKey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(cloud.key())}" placeholder="regen-…"></div>
+      </div>
+      <div id="cMsg" style="margin-top:10px">${msg || ''}</div>
+      <div class="acts">${cloud.key() ? '<button class="btn danger" id="cOff">Disconnect this device</button>' : ''}<button class="btn" data-close>Cancel</button><button class="btn primary" id="cSave">Connect</button></div>`;
+  }
+  function openInbox(view) {
+    const m = modal('<div class="inbox"></div>');
+    const box = m.querySelector('.inbox');
+    const showSettings = msg => {
+      box.innerHTML = settingsHTML(msg);
+      box.querySelector('#cSave').onclick = async () => {
+        const url = box.querySelector('#cUrl').value.trim(), key = box.querySelector('#cKey').value.trim();
+        const out = box.querySelector('#cMsg');
+        if (!H.validScriptUrl(url)) { out.innerHTML = '<div class="imsg err">The URL should start with https://script.google.com/ and end with /exec.</div>'; return; }
+        if (!key) { out.innerHTML = '<div class="imsg err">Enter the team key.</div>'; return; }
+        out.innerHTML = '<div class="imsg info">Checking…</div>';
+        try {
+          const r = await H.cloudPost(url, { action: 'ping', key });
+          if (!r || !r.ok) throw new Error((r && r.error) || 'No answer.');
+          if (!r.keyOk) { out.innerHTML = '<div class="imsg err">Connected to the Sheet, but the team key is wrong. Check TEAM_KEY in Apps Script → Project Settings → Script properties.</div>'; return; }
+          if (url === H.configUrl()) H.store.del('cloud_url'); else H.store.set('cloud_url', url);
+          H.store.set('cloud_key', key);
+          toast('Connected to the customer form Sheet'); showList(true);
+        } catch (err) { out.innerHTML = `<div class="imsg err">${esc(err.message)}</div>`; }
+      };
+      const off = box.querySelector('#cOff');
+      if (off) off.onclick = () => {
+        if (off.dataset.confirm !== '1') { off.dataset.confirm = '1'; off.textContent = 'Confirm disconnect'; return; }
+        H.store.del('cloud_key'); H.store.del('cloud_url'); inboxItems = []; setBadge(0); showSettings('<div class="imsg ok">This device is disconnected. Submissions stay in the Sheet.</div>');
+      };
+    };
+    const itemHTML = x => {
+      const st = x.status === 'New' ? '<span class="pill gold">New</span>' : x.status === 'Done' ? `<span class="pill ok">Done</span>` : `<span class="pill info">Opened${x.openedBy ? ' · ' + esc(x.openedBy) : ''}</span>`;
+      return `<div class="it${x.status === 'New' ? ' new' : ''}" data-ref="${esc(x.ref)}">
+        <b>${esc(x.name || 'No name')}</b>
+        <div class="acts2"><button class="btn sm primary" data-act="open">Open</button>
+          <button class="btn sm" data-act="${x.status === 'Done' ? 'new' : 'done'}">${x.status === 'Done' ? 'Mark new' : 'Mark done'}</button></div>
+        <div class="meta">${st} <span class="tnum">${esc(x.ref)}</span> · ${esc(fmtDT(x.received))}</div>
+        <div class="meta">${x.count} appliances · ${(+x.kw).toFixed(2)} kW connected${x.supply ? ' · ' + esc(x.supply) : ''}${x.phone ? ' · ' + esc(x.phone) : ''}${x.address ? '<br>' + esc(x.address.replace(/\s+/g, ' ').slice(0, 90)) : ''}</div>
+      </div>`;
+    };
+    const drawList = () => {
+      const list = inboxItems.filter(x => inboxFilter === 'all' || x.status === 'New');
+      const nNew = inboxItems.filter(x => x.status === 'New').length;
+      box.querySelector('#iList').innerHTML = list.length ? list.map(itemHTML).join('')
+        : `<div class="imsg info">${inboxFilter === 'new' ? 'No new customer forms. Tap “All” to see earlier ones.' : 'No customer forms yet. Send the form link from the Customer tab.'}</div>`;
+      box.querySelector('#iNewN').textContent = nNew ? ` (${nNew})` : '';
+      setBadge(nNew);
+    };
+    const showList = async (fresh) => {
+      box.innerHTML = `<h3>Customer submissions</h3>
+        <div class="ibar"><div class="seg" id="iFilt"><button type="button" data-v="new" class="${inboxFilter === 'new' ? 'on' : ''}">New<span id="iNewN"></span></button><button type="button" data-v="all" class="${inboxFilter === 'all' ? 'on' : ''}">All</button></div>
+          <span class="sp"></span><button class="btn sm" id="iRef">Refresh</button></div>
+        <div id="iMsg"></div><div class="ilist" id="iList"></div>
+        <div class="acts"><button class="btn ghost" id="iSet">Connection settings</button><button class="btn" data-close>Close</button></div>`;
+      box.querySelector('#iSet').onclick = () => showSettings();
+      box.querySelector('#iFilt').onclick = e => { const b = e.target.closest('button'); if (!b) return; inboxFilter = b.dataset.v; box.querySelectorAll('#iFilt button').forEach(x => x.classList.toggle('on', x === b)); drawList(); };
+      const load = async () => {
+        box.querySelector('#iMsg').innerHTML = '<div class="imsg info">Loading…</div>';
+        try {
+          const r = await cloud.call('list', { limit: 300 });
+          if (!r.ok) { if (r.code === 'key') return showSettings('<div class="imsg err">The team key was changed. Enter the new key.</div>'); throw new Error(r.error); }
+          inboxItems = r.items; lastBadge = Date.now(); box.querySelector('#iMsg').innerHTML = ''; drawList();
+        } catch (err) { box.querySelector('#iMsg').innerHTML = `<div class="imsg err">${esc(err.message)}</div>`; drawList(); }
+      };
+      box.querySelector('#iRef').onclick = load;
+      drawList();
+      if (fresh || !inboxItems.length) await load();
+    };
+    box.addEventListener('click', async e => {
+      const b = e.target.closest('[data-act]'); if (!b) return;
+      const ref = b.closest('.it').dataset.ref, item = inboxItems.find(x => x.ref === ref);
+      const msg = box.querySelector('#iMsg');
+      if (b.dataset.act === 'done' || b.dataset.act === 'new') {
+        b.disabled = true;
+        try { const r = await cloud.call('status', { ref, status: b.dataset.act === 'done' ? 'Done' : 'New', by: P.prep.by || H.store.get('engineer', '') }); if (!r.ok) throw new Error(r.error); item.status = b.dataset.act === 'done' ? 'Done' : 'New'; drawList(); }
+        catch (err) { b.disabled = false; msg.innerHTML = `<div class="imsg err">${esc(err.message)}</div>`; }
+        return;
+      }
+      // open
+      const existing = (H.store.get('projects', []) || []).find(x => x.formRef === ref && H.store.get('p_' + x.id));
+      const fetchAndOpen = async () => {
+        b.disabled = true; b.textContent = 'Opening…';
+        try {
+          const r = await cloud.call('get', { ref });
+          if (!r.ok) throw new Error(r.error);
+          m.remove();
+          openData(r.form, () => {
+            if (item && item.status === 'New') cloud.call('status', { ref, status: 'Opened', by: P.prep.by || H.store.get('engineer', '') || 'Design team' })
+              .then(x => { if (x && x.ok) { item.status = 'Opened'; setBadge(inboxItems.filter(y => y.status === 'New').length); } }).catch(() => { });
+          });
+        } catch (err) { b.disabled = false; b.textContent = 'Open'; msg.innerHTML = `<div class="imsg err">${esc(err.message)}</div>`; }
+      };
+      if (existing) {
+        msg.innerHTML = `<div class="imsg info">${esc(ref)} is already a project on this device (${esc(existing.name)}, updated ${esc(fmtDT(existing.updated))}).
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" id="oEx">Open my project</button><button class="btn sm" id="oNew">Open the form again as a new project</button></div></div>`;
+        msg.querySelector('#oEx').onclick = () => { const p = H.store.get('p_' + existing.id); m.remove(); P = normProject(p); undoApps = null; undoPhases = null; selHour = null; openSet.clear(); persist(); updateLive(); show('ana'); toast('Project opened'); };
+        msg.querySelector('#oNew').onclick = fetchAndOpen;
+        msg.scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      fetchAndOpen();
+    });
+    if (view === 'settings' || !cloud.ready()) showSettings(); else showList(false);
+  }
+  $('#bInbox').addEventListener('click', () => openInbox());
+  $('#bInbox2').addEventListener('click', () => openInbox());
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshBadge(); });
+
   // ---------- start ----------
   loadCurrent();
-  sizeTop(); updateLive();
+  sizeTop(); updateLive(); refreshBadge(true);
   const startTab = H.store.get('tab') || (P.appliances.length ? 'ana' : 'cust');
   show(['cust', 'apps', 'ana'].includes(startTab) ? startTab : 'cust');
   window.__hlc = { get P() { return P; }, openData, buildWorkbook, show };   // used by automated tests

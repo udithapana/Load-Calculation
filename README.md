@@ -15,10 +15,17 @@ Two pages in one GitHub Pages app:
 
 The install id in `manifest.webmanifest` is `"/Load-Calculation/"`, matching the repository folder. If the repository is ever renamed, change the id to `"/<new-repo-name>/"`.
 
+## Customer forms online (Google Sheet)
+
+Customers submit the form online and it is saved to a Google Sheet; the team opens it from **Inbox**.
+Set-up steps: **SETUP-Google-Sheet.md**. The Apps Script code is **apps-script/Code.gs** (it runs in Google, it doesn't need to be on GitHub).
+The web app URL goes in **config.js**. The team key is never stored in the repository; each device enters it once.
+
 ## Files
 
 - `index.html` – engineer app (installable from Chrome)
-- `form.html` – customer form (also prints a blank paper form)
+- `form.html` – customer form (submits online, or sends a file; also prints a blank paper form)
+- `config.js` – the Google Sheet web app URL used by the customer form
 - `common.js` – appliance catalogue and load-analysis engine (shared)
 - `common.css` – shared styles
 - `xlsx-writer.js` – builds the Excel load calculation sheet in the browser (no internet library needed)

@@ -186,6 +186,7 @@ const HLC = (() => {
     a.hpd = a.hpdManual ? Math.min(24, Math.max(0, num(a.hpd, countHrs(hrs)))) : countHrs(hrs);
     a.notes = String(a.notes ?? '').slice(0, 300);
     a.ph = ['L1', 'L2', 'L3', '3P'].includes(a.ph) ? a.ph : '';
+    a.phLock = !!a.phLock;
     return a;
   }
   const USE_LABEL = { daily: 'Every day', weekdays: 'Weekdays', weekends: 'Weekends', occasional: 'Occasionally' };
@@ -200,60 +201,95 @@ const HLC = (() => {
   }
 
   // ---------- analysis ----------
-  const defaultInverter = () => ({ phase: 1, kw: 5, surge: 2, warn: 80, margin: 10, scope: 'all', phaseKw: '' });
+  // Inverter settings. Three-phase limits come from the datasheet:
+  //   phaseKw      max continuous output per phase (kW)
+  //   unbalKw      max allowed difference between the highest and lowest phase (kW) – '' when the datasheet states no limit
+  //   phasePeakKw  per-phase short-time / peak capability (kW, ~10 s) used for motor starting – '' = phaseKw × surge
+  const defaultInverter = () => ({ phase: 1, kw: 5, surge: 2, warn: 80, margin: 10, scope: 'all', phaseKw: '', unbalKw: '', phasePeakKw: '', model: '', scaled: false });
   const SIZES = {
     1: [3, 3.6, 5, 6, 8, 10, 12, 16],
     3: [5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50]
   };
+  const PH = ['L1', 'L2', 'L3'];
 
   const inScope = (a, inv) => a.inc !== false && (inv.scope !== 'backup' || a.b) && a.qtyOn > 0 && a.w > 0 && a.k !== undefined;
   const runW = a => a.qtyOn * a.w;
-  const phaseLimitW = inv => (num(inv.phaseKw, 0) > 0 ? num(inv.phaseKw) : inv.kw / 3) * 1000;
+  function limits(inv) {
+    const kw = num(inv.kw, 0), three = +inv.phase === 3;
+    const given = num(inv.phaseKw, 0) > 0;
+    const phaseKw = given ? num(inv.phaseKw) : kw / 3;
+    const unb = num(inv.unbalKw, 0) > 0 ? num(inv.unbalKw) : null;
+    const pk = num(inv.phasePeakKw, 0) > 0 ? num(inv.phasePeakKw) : phaseKw * num(inv.surge, 1);
+    return { three, rated: kw * 1000, pl: phaseKw * 1000, unbal: unb == null ? null : unb * 1000, ppk: pk * 1000, assumed: three && !given, scaled: three && !!inv.scaled };
+  }
+  const phaseLimitW = inv => limits(inv).pl;
 
   function hourState(apps, inv, h) {
     const three = +inv.phase === 3;
     let total = 0, extra = 0, extraName = '';
-    const ph = { L1: 0, L2: 0, L3: 0 };
+    const ph = { L1: 0, L2: 0, L3: 0 }, xph = { L1: 0, L2: 0, L3: 0 }, xname = { L1: '', L2: '', L3: '' };
     const on = [];
     for (const a of apps) {
       if (!inScope(a, inv) || !a.hrs[h]) continue;
       const p = runW(a);
       total += p;
-      on.push({ id: a.id, name: a.name || 'Appliance', p, n: a.qtyOn });
-      if (three) {
-        if (a.ph === '3P') { ph.L1 += p / 3; ph.L2 += p / 3; ph.L3 += p / 3; }
-        else ph[a.ph || 'L1'] += p;
-      }
+      on.push({ id: a.id, name: a.name || 'Appliance', p, n: a.qtyOn, ph: three ? (a.ph || 'L1') : '' });
       const ex = (a.s - 1) * a.w;          // one unit of the largest motor starting
       if (ex > extra) { extra = ex; extraName = a.name; }
+      if (three) {
+        if (a.ph === '3P') for (const k of PH) { ph[k] += p / 3; if (ex / 3 > xph[k]) { xph[k] = ex / 3; xname[k] = a.name; } }
+        else { const k = a.ph || 'L1'; ph[k] += p; if (ex > xph[k]) { xph[k] = ex; xname[k] = a.name; } }
+      }
     }
     on.sort((x, y) => y.p - x.p);
     const maxPh = three ? Math.max(ph.L1, ph.L2, ph.L3) : 0;
-    return { h, total, ph, maxPh, on, extra, extraName };
+    const imb = three ? maxPh - Math.min(ph.L1, ph.L2, ph.L3) : 0;
+    return { h, total, ph, maxPh, imb, xph, xname, on, extra, extraName };
   }
-  function severity(st, inv) {
-    const rated = inv.kw * 1000;
-    let s = Math.max(0, st.total - rated);
-    if (+inv.phase === 3) { const pl = phaseLimitW(inv); for (const k of ['L1', 'L2', 'L3']) s += Math.max(0, st.ph[k] - pl); }
+  // how far an hour is beyond the limits (W); 0 = within every limit
+  function severity(st, inv, L) {
+    L = L || limits(inv);
+    let s = Math.max(0, st.total - L.rated);
+    if (L.three) {
+      for (const k of PH) s += Math.max(0, st.ph[k] - L.pl);
+      if (L.unbal != null) s += Math.max(0, st.imb - L.unbal);
+    }
     return s;
   }
 
   function analyse(apps, inv) {
-    const rated = inv.kw * 1000, warn = inv.warn / 100, three = +inv.phase === 3, pl = phaseLimitW(inv);
+    const L = limits(inv), warn = inv.warn / 100, three = L.three, E = 0.01;
     const hours = [];
-    let peak = 0, peakHour = 0, maxSurgePeak = 0;
-    const peakPh = { L1: 0, L2: 0, L3: 0 };
+    let peak = 0, peakHour = 0, maxSurgePeak = 0, peakImb = 0, maxSurgePh = 0;
+    const peakPh = { L1: 0, L2: 0, L3: 0 }, peakPhHour = { L1: 0, L2: 0, L3: 0 }, phOver = { L1: [], L2: [], L3: [] }, unbalHours = [], phaseSurgeHours = [];
     for (let h = 0; h < 24; h++) {
       const st = hourState(apps, inv, h);
-      const over = st.total > rated + 0.01 || (three && st.maxPh > pl + 0.01);
-      const high = !over && (st.total > rated * warn + 0.01 || (three && st.maxPh > pl * warn + 0.01));
-      st.status = over ? 'over' : high ? 'high' : 'ok';
-      st.loading = rated > 0 ? st.total / rated : 0;
+      const why = [];
+      if (st.total > L.rated + E) why.push('total');
+      if (three) {
+        for (const k of PH) if (st.ph[k] > L.pl + E) { why.push(k); phOver[k].push(h); }
+        if (L.unbal != null && st.imb > L.unbal + E) { why.push('unbal'); unbalHours.push(h); }
+      }
+      const high = !why.length && (st.total > L.rated * warn + E || (three && (st.maxPh > L.pl * warn + E || (L.unbal != null && st.imb > L.unbal * warn + E))));
+      st.why = why;
+      st.status = why.length ? 'over' : high ? 'high' : 'ok';
+      st.label = why.includes('total') ? 'OVERLOAD' : why.some(w => w[0] === 'L') ? 'PHASE OVERLOAD' : why.includes('unbal') ? 'UNBALANCE' : high ? 'HIGH' : 'OK';
+      st.loading = L.rated > 0 ? st.total / L.rated : 0;
       st.surgePeak = st.total + st.extra;
-      st.surgeOver = st.on.length > 0 && st.surgePeak > rated * inv.surge + 0.01;
+      st.surgeOver = st.on.length > 0 && st.surgePeak > L.rated * inv.surge + E;
+      st.surgePh = [];
+      if (three) for (const k of PH) {
+        const v = st.ph[k] + st.xph[k];
+        if (v > maxSurgePh) maxSurgePh = v;
+        if (st.xph[k] > 0 && v > L.ppk + E) st.surgePh.push(k);
+      }
+      if (st.surgePh.length) { st.surgeOver = true; phaseSurgeHours.push(h); }
       if (st.total > peak) { peak = st.total; peakHour = h; }
       if (st.surgePeak > maxSurgePeak) maxSurgePeak = st.surgePeak;
-      if (three) for (const k of ['L1', 'L2', 'L3']) peakPh[k] = Math.max(peakPh[k], st.ph[k]);
+      if (three) {
+        for (const k of PH) if (st.ph[k] > peakPh[k]) { peakPh[k] = st.ph[k]; peakPhHour[k] = h; }
+        if (st.imb > peakImb) peakImb = st.imb;
+      }
       hours.push(st);
     }
     // energy (duty factor applies to energy only; peak uses full rating)
@@ -267,26 +303,33 @@ const HLC = (() => {
       a.hrs.forEach((on, h) => { if (on) eHour[h] += perHour; });
     }
     eHour.forEach((e, h) => { energy += e; if (h >= 6 && h < 18) eDay += e; else eNight += e; });
-    const connected = apps.filter(a => inScope(a, inv)).reduce((s, a) => s + a.qty * a.w, 0);
+    const scoped = apps.filter(a => inScope(a, inv));
+    const connected = scoped.reduce((s, a) => s + a.qty * a.w, 0);
+    // single-phase appliances that are too big for one phase of this inverter, whichever phase they are on
+    const tooBig = three ? scoped.filter(a => a.ph !== '3P' && countHrs(a.hrs) && runW(a) > L.pl + E).map(a => ({ id: a.id, name: a.name, p: runW(a) })) : [];
     return {
-      hours, peak, peakHour, peakPh, maxSurgePeak, energy, eDay, eNight, eHour, connected, rated, pl, three,
+      hours, peak, peakHour, peakPh, peakPhHour, peakImb, maxSurgePeak, maxSurgePh, energy, eDay, eNight, eHour, connected,
+      rated: L.rated, pl: L.pl, unbal: L.unbal, ppk: L.ppk, assumed: L.assumed, scaled: L.scaled, three, phOver, unbalHours, phaseSurgeHours, tooBig,
       over: hours.filter(x => x.status === 'over').map(x => x.h),
+      totalOver: hours.filter(x => x.why.includes('total')).map(x => x.h),
+      phaseOverAny: hours.filter(x => x.why.some(w => w[0] === 'L')).map(x => x.h),
       high: hours.filter(x => x.status === 'high').map(x => x.h),
       surge: hours.filter(x => x.surgeOver).map(x => x.h)
     };
   }
 
-  // Greedy re-scheduling of flexible appliances out of overloaded hours.
+  // Greedy re-scheduling of flexible appliances out of overloaded hours (total, phase and imbalance limits).
   function planShift(apps, inv) {
     const work = apps.map(a => ({ ...a, hrs: a.hrs.slice() }));
-    const rated = inv.kw * 1000, warn = inv.warn / 100;
+    const L = limits(inv), warn = inv.warn / 100;
+    const sev = st => severity(st, inv, L);
     const moves = [], locked = new Set(), skip = new Set();
     const circ = (a, b) => { const d = Math.abs(a - b); return Math.min(d, 24 - d); };
     for (let guard = 0; guard < 400; guard++) {
       let H = -1, S = 0;
       for (let h = 0; h < 24; h++) {
         if (skip.has(h)) continue;
-        const s = severity(hourState(work, inv, h), inv);
+        const s = sev(hourState(work, inv, h));
         if (s > S + 0.01) { S = s; H = h; }
       }
       if (H < 0) break;
@@ -296,18 +339,15 @@ const HLC = (() => {
         for (let t = 0; t < 24; t++) {
           if (t === H || a.hrs[t]) continue;
           a.hrs[H] = 0; a.hrs[t] = 1;
-          const sH = severity(hourState(work, inv, H), inv);
+          const sH = sev(hourState(work, inv, H));
           const stT = hourState(work, inv, t);
-          const sT = severity(stT, inv);
+          const sT = sev(stT);
           a.hrs[H] = 1; a.hrs[t] = 0;
-          if (sT > 0.01) continue;                // target hour must stay within rating
+          if (sT > 0.01) continue;                // target hour must stay within every limit
           const gain = S - sH;
           if (gain <= 0.01) continue;
           const solar = t >= 8 && t < 16 ? 1 : 0;
-          const cand = {
-            a, t, p: runW(a), resolves: sH <= 0.01, gain,
-            hi: stT.total > rated * warn ? 1 : 0, dist: circ(H, t) - solar * 1.5
-          };
+          const cand = { a, t, p: runW(a), resolves: sH <= 0.01, gain, hi: stT.total > L.rated * warn ? 1 : 0, dist: circ(H, t) - solar * 1.5 };
           const key = c => [c.resolves ? 0 : 1, c.resolves ? c.p : -c.gain, c.hi, c.dist];
           if (!best) { best = cand; continue; }
           const k1 = key(cand), k2 = key(best);
@@ -335,42 +375,77 @@ const HLC = (() => {
     return [...g.values()].filter(x => countHrs(x.from) || countHrs(x.to));
   }
 
-  function recommendInverter(res, inv, sizes) {
-    const list = (sizes && sizes.length ? sizes : SIZES[+inv.phase === 3 ? 3 : 1]).slice().sort((a, b) => a - b);
-    const m = 1 + num(inv.margin, 0) / 100;
-    const needRun = res.peak / 1000 * m;
-    let needPh = 0;
-    if (res.three) {
-      const pf = phaseLimitW(inv) / (inv.kw * 1000 / 3);    // per-phase allowance relative to rated/3
-      needPh = 3 * Math.max(res.peakPh.L1, res.peakPh.L2, res.peakPh.L3) / 1000 * m / (pf || 1);
+  // ---------- phase balancing ----------
+  // Score of a phase assignment: [W beyond the limits, W beyond the warning level, highest phase peak] – lower is better
+  function phaseScore(apps, inv, L) {
+    const w = inv.warn / 100;
+    let sev = 0, hi = 0, pk = 0;
+    for (let h = 0; h < 24; h++) {
+      const st = hourState(apps, inv, h);
+      sev += severity(st, inv, L);
+      for (const k of PH) hi += Math.max(0, st.ph[k] - L.pl * w);
+      if (L.unbal != null) hi += Math.max(0, st.imb - L.unbal * w);
+      pk = Math.max(pk, st.maxPh);
     }
-    const needSurge = res.maxSurgePeak / 1000 / (inv.surge || 1);
-    const req = Math.max(needRun, needPh, needSurge);
-    const driver = req === needSurge && needSurge > needRun && needSurge > needPh ? 'surge' : (req === needPh && needPh > needRun ? 'phase' : 'running');
-    let pick = null;
-    const single = list.find(s => s >= req - 1e-9);
-    if (single != null) pick = { n: 1, size: single, total: single };
-    else {
-      for (const s of list) for (let n = 2; n <= 10; n++) {
-        if (n * s >= req - 1e-9) {
-          const c = { n, size: s, total: n * s };
-          if (!pick || c.total < pick.total - 1e-9 || (Math.abs(c.total - pick.total) < 1e-9 && c.n < pick.n)) pick = c;
-          break;
-        }
-      }
-    }
-    return { req, needRun, needPh, needSurge, driver, pick, label: pick ? (pick.n > 1 ? `${pick.n} × ${pick.size} kW (${pick.total} kW) in parallel` : `${pick.size} kW`) : '—' };
+    return [Math.round(sev), Math.round(hi), Math.round(pk)];
   }
-
-  // Balance single-phase appliances across L1/L2/L3 (keeps 3P items as they are)
-  function autoBalance(apps, inv) {
+  // Stage 1 removes limit violations (sev); only when there are none, stage 2 brings phases under the warning level (hi).
+  // A step must reduce the stage's measure; ties go to the lower highest-phase peak. Fewest moves wins over cosmetic balance.
+  function planPhases(apps, inv) {
+    if (+inv.phase !== 3) return null;
+    const L = limits(inv);
+    const work = apps.map(a => ({ ...a, hrs: a.hrs, ph: a.ph || 'L1' }));
+    const mov = work.filter(a => inScope(a, inv) && a.ph !== '3P' && !a.phLock && countHrs(a.hrs));
+    let cur = phaseScore(work, inv, L);
+    const start = cur.slice();
+    const stage = cur[0] > 0 ? 0 : 1;
+    const key = s => [s[stage], s[2]];
+    const lt = (x, y) => x[0] < y[0] || (x[0] === y[0] && x[1] < y[1]);
+    for (let it = 0; it < 40 && cur[stage] > 0; it++) {
+      let best = null, bestS = null;
+      const consider = (s, change) => {
+        if (s[stage] >= cur[stage]) return;                       // must reduce this stage's measure
+        if (stage === 1 && s[0] > 0) return;                       // never create an overload
+        if (!best || lt(key(s), key(bestS)) || (key(s)[0] === key(bestS)[0] && key(s)[1] === key(bestS)[1] && change.length < best.length)) { best = change; bestS = s; }
+      };
+      for (const a of mov) for (const k of PH) {
+        if (k === a.ph) continue;
+        const o = a.ph; a.ph = k; const s = phaseScore(work, inv, L); a.ph = o;
+        consider(s, [[a, k]]);
+      }
+      for (let i = 0; i < mov.length; i++) for (let j = i + 1; j < mov.length; j++) {
+        const a = mov[i], b = mov[j]; if (a.ph === b.ph) continue;
+        const oa = a.ph, ob = b.ph; a.ph = ob; b.ph = oa; const s = phaseScore(work, inv, L); a.ph = oa; b.ph = ob;
+        consider(s, [[a, ob], [b, oa]]);
+      }
+      if (!best) break;
+      best.forEach(([a, k]) => a.ph = k); cur = bestS;
+    }
+    // prune: put back any moved circuit whose move is not needed for the final result
+    const orig = new Map(apps.map(a => [a.id, a.ph || 'L1']));
+    for (let pass = 0; pass < 3; pass++) {
+      let changedAny = false;
+      for (const a of mov.filter(x => x.ph !== orig.get(x.id)).sort((x, y) => runW(x) - runW(y))) {
+        const k = a.ph; a.ph = orig.get(a.id);
+        const s = phaseScore(work, inv, L);
+        if (s[0] <= cur[0] && (stage === 0 || s[1] <= cur[1])) { cur = s; changedAny = true; } else a.ph = k;
+      }
+      if (!changedAny) break;
+    }
+    const moves = work.filter(a => a.ph !== orig.get(a.id) && inScope(a, inv)).map(a => ({ id: a.id, name: a.name, from: orig.get(a.id), to: a.ph, p: runW(a) }));
+    const result = analyse(work, inv);
+    return { apps: work, moves, result, before: start, after: cur, resolvedPhase: result.over.length === 0 };
+  }
+  // First assignment when a project becomes three-phase: spread the largest loads, then refine.
+  function autoBalance(apps, inv, keepAssigned) {
     const vec = { L1: new Array(24).fill(0), L2: new Array(24).fill(0), L3: new Array(24).fill(0) };
     const scoped = apps.filter(a => inScope(a, inv));
-    scoped.filter(a => a.ph === '3P').forEach(a => a.hrs.forEach((on, h) => { if (on) for (const k in vec) vec[k][h] += runW(a) / 3; }));
-    const single = scoped.filter(a => a.ph !== '3P').sort((x, y) => runW(y) * (countHrs(y.hrs) ? 1 : 0) - runW(x) * (countHrs(x.hrs) ? 1 : 0));
-    for (const a of single) {
+    const fixed = a => a.ph === '3P' || a.phLock || (keepAssigned && a.ph);
+    scoped.filter(fixed).forEach(a => a.hrs.forEach((on, h) => { if (!on) return; if (a.ph === '3P') for (const k of PH) vec[k][h] += runW(a) / 3; else vec[a.ph || 'L1'][h] += runW(a); }));
+    const free = scoped.filter(a => !fixed(a)).sort((x, y) => runW(y) * (countHrs(y.hrs) ? 1 : 0) - runW(x) * (countHrs(x.hrs) ? 1 : 0));
+    for (const a of free) {
       let bestK = 'L1', bestV = Infinity;
-      for (const k of ['L1', 'L2', 'L3']) {
+      for (const k of PH) {
         let mx = 0, sum = 0;
         for (let h = 0; h < 24; h++) { const v = vec[k][h] + (a.hrs[h] ? runW(a) : 0); mx = Math.max(mx, v); sum += v; }
         const score = mx * 1000 + sum / 1000;
@@ -379,6 +454,67 @@ const HLC = (() => {
       a.ph = bestK;
       a.hrs.forEach((on, h) => { if (on) vec[bestK][h] += runW(a); });
     }
+    const p = planPhases(apps, inv);
+    if (p) { const m = new Map(p.apps.map(a => [a.id, a.ph])); apps.forEach(a => { if (m.has(a.id)) a.ph = m.get(a.id); }); }
+    apps.forEach(a => { if (!a.ph) a.ph = 'L1'; });
+  }
+
+  // ---------- inverter recommendation ----------
+  // models: saved datasheet entries [{name, phase, kw, surge, phaseKw, unbalKw, phasePeakKw}]
+  function recommendInverter(res, inv, sizes, models) {
+    const three = +inv.phase === 3, L = limits(inv);
+    const m = 1 + num(inv.margin, 0) / 100;
+    const need = {
+      run: res.peak / 1000 * m,
+      phase: three ? Math.max(res.peakPh.L1, res.peakPh.L2, res.peakPh.L3) / 1000 * m : 0,
+      unbal: three ? res.peakImb / 1000 : 0,
+      surge: res.maxSurgePeak / 1000,
+      phasePeak: three ? res.maxSurgePh / 1000 : 0
+    };
+    const capsOf = (kw, surge, phaseKw, unbalKw, phasePeakKw) => ({ kw, surge: kw * surge, phase: phaseKw, unbal: unbalKw == null ? Infinity : unbalKw, phasePeak: phasePeakKw });
+    const fits = c => c.kw >= need.run - 1e-9 && c.surge >= need.surge - 1e-9 && (!three || (c.phase >= need.phase - 1e-9 && c.unbal >= need.unbal - 1e-9 && c.phasePeak >= need.phasePeak - 1e-9));
+    const cands = [];
+    const lib = (models || []).filter(x => +x.phase === +inv.phase && num(x.kw) > 0);
+    let basis = 'sizes';
+    if (lib.length) {
+      basis = 'library';
+      for (const x of lib) for (let n = 1; n <= 6; n++) {
+        const pk = num(x.phaseKw, 0) > 0 ? num(x.phaseKw) : num(x.kw) / 3;
+        const c = capsOf(n * num(x.kw), num(x.surge, 2), n * pk, num(x.unbalKw, 0) > 0 ? n * num(x.unbalKw) : null, n * (num(x.phasePeakKw, 0) > 0 ? num(x.phasePeakKw) : pk * num(x.surge, 2)));
+        if (fits(c)) { cands.push({ n, size: num(x.kw), total: n * num(x.kw), model: x, caps: c }); break; }
+      }
+    } else {
+      // no datasheet library: scale the selected inverter's datasheet ratios to the standard sizes
+      const rPh = L.pl / L.rated, rUn = L.unbal == null ? null : L.unbal / L.rated, rPk = L.ppk / L.rated;
+      const list = (sizes && sizes.length ? sizes : SIZES[three ? 3 : 1]).slice().sort((a, b) => a - b);
+      for (const s of list) for (let n = 1; n <= 10; n++) {
+        const kw = n * s, c = capsOf(kw, inv.surge, kw * rPh, rUn == null ? null : kw * rUn, kw * rPk);
+        if (fits(c)) { cands.push({ n, size: s, total: kw, caps: c }); break; }
+      }
+    }
+    cands.sort((a, b) => a.total - b.total || a.n - b.n);
+    const pick = cands[0] || null;
+    // which requirement sets the size (compare each need with what the selected inverter offers per kW)
+    const per = { run: 1, surge: inv.surge, phase: L.pl / L.rated, unbal: L.unbal == null ? null : L.unbal / L.rated, phasePeak: L.ppk / L.rated };
+    const eq = { run: need.run, surge: need.surge / per.surge };
+    if (three) { eq.phase = need.phase / per.phase; eq.phasePeak = need.phasePeak / per.phasePeak; if (per.unbal) eq.unbal = need.unbal / per.unbal; }
+    let driver = 'run', req = 0;
+    for (const k in eq) if (eq[k] > req + 1e-9) { req = eq[k]; driver = k; }
+    if (pick) {       // the requirement that binds hardest on the chosen inverter
+      let u = -1;
+      for (const k of ['run', 'surge', 'phase', 'unbal', 'phasePeak']) {
+        if (!three && ['phase', 'unbal', 'phasePeak'].includes(k)) continue;
+        const cap = pick.caps[k]; if (!isFinite(cap) || cap <= 0) continue;
+        const r = need[k] / cap; if (r > u + 1e-9) { u = r; driver = k; }
+      }
+    }
+    const DRV = { run: 'the running peak', surge: 'motor starting surge', phase: 'the most loaded phase', unbal: 'the phase imbalance', phasePeak: 'motor starting on one phase' };
+    let label = '—';
+    if (pick) {
+      const nm = pick.model ? pick.model.name : `${pick.size} kW`;
+      label = pick.n > 1 ? `${pick.n} × ${nm} in parallel (${pick.total} kW)` : nm + (pick.model ? ` (${pick.size} kW)` : '');
+    }
+    return { req, need, driver, driverText: DRV[driver], pick, label, basis, assumed: L.assumed || L.scaled };
   }
 
   // ---------- 24-hour chart (SVG string) ----------
@@ -425,6 +561,40 @@ const HLC = (() => {
     s += `<text x="${L + pw / 2}" y="${H - 4}" font-size="10" text-anchor="middle" fill="${pal.text}">Hour of day (bar = load from that hour to the next)</text>`;
     s += '</svg>';
     return s;
+  }
+  // per-phase grouped bars (L1 brown, L2 black, L3 grey – IEC conductor colours); bars over the per-phase limit in red
+  const PHASE_COL = { L1: '#8b5a2b', L2: '#1c1c1c', L3: '#8a94a6' };
+  function phaseChartSVG(res, inv, pal = LIGHT_PAL, opt = {}) {
+    const W = opt.w || 760, H = opt.h || 300, L = 46, R = 14, T = 18, B = 34;
+    const pw = W - L - R, ph = H - T - B, pl = res.pl / 1000;
+    const top = Math.max(res.peakPh.L1, res.peakPh.L2, res.peakPh.L3, res.pl) / 1000 * 1.15 || 1;
+    const step = niceStep(top), ymax = Math.ceil(top / step) * step;
+    const y = v => T + ph - (v / ymax) * ph;
+    const bw = pw / 24;
+    let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif" role="img" aria-label="Load per phase over 24 hours">`;
+    s += `<rect x="0" y="0" width="${W}" height="${H}" fill="${pal.bg}"/>`;
+    s += `<rect x="${L + 6 * bw}" y="${T}" width="${12 * bw}" height="${ph}" fill="${pal.band}"/>`;
+    for (let v = 0; v <= ymax + 1e-9; v += step) {
+      s += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="${pal.grid}" stroke-width="1"/>`;
+      s += `<text x="${L - 6}" y="${y(v) + 3.5}" font-size="10.5" text-anchor="end" fill="${pal.text}">${+v.toFixed(2)}</text>`;
+    }
+    s += `<text x="12" y="${T + ph / 2}" font-size="10.5" fill="${pal.text}" transform="rotate(-90 12 ${T + ph / 2})" text-anchor="middle">kW per phase</text>`;
+    res.hours.forEach((hr, h) => {
+      PH.forEach((k, i) => {
+        const v = hr.ph[k] / 1000, w = bw * 0.24, x = L + h * bw + bw * 0.13 + i * w;
+        const over = hr.ph[k] > res.pl + 0.01;
+        if (v > 0) s += `<rect data-h="${h}" x="${x.toFixed(1)}" y="${y(v).toFixed(1)}" width="${(w - 0.6).toFixed(1)}" height="${Math.max(0.5, y(0) - y(v)).toFixed(1)}" fill="${over ? pal.over : PHASE_COL[k]}"${opt.sel === h ? ` stroke="${pal.sel}" stroke-width="1.5"` : ''}/>`;
+      });
+      if (opt.hit) s += `<rect data-h="${h}" class="hit" x="${L + h * bw}" y="${T}" width="${bw}" height="${ph}" fill="transparent"/>`;
+      if (h % 3 === 0) s += `<text x="${L + h * bw + bw / 2}" y="${H - B + 15}" font-size="10.5" text-anchor="middle" fill="${pal.text}">${ampmShort(h)}</text>`;
+    });
+    s += `<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="${pal.text}" stroke-width="1"/>`;
+    s += `<line x1="${L}" x2="${W - R}" y1="${y(pl)}" y2="${y(pl)}" stroke="${pal.line}" stroke-width="1.8" stroke-dasharray="7 4"/>`;
+    const lbl = `Per-phase limit ${+pl.toFixed(2)} kW${res.assumed ? ' (assumed)' : ''}`;
+    s += `<rect x="${W - R - 8 - lbl.length * 5.9}" y="${y(pl) - 17}" width="${lbl.length * 5.9 + 8}" height="14" rx="3" fill="${pal.bg}" opacity="0.9"/>`;
+    s += `<text x="${W - R - 4}" y="${y(pl) - 6}" font-size="10.5" font-weight="700" text-anchor="end" fill="${pal.line}">${lbl}</text>`;
+    s += `<text x="${L + pw / 2}" y="${H - 4}" font-size="10" text-anchor="middle" fill="${pal.text}">Hour of day · bars per hour: L1, L2, L3</text>`;
+    return s + '</svg>';
   }
   function svgToPng(svg, scale = 2) {
     return new Promise((resolve, reject) => {
@@ -483,11 +653,32 @@ const HLC = (() => {
   const safeName = s => String(s || '').trim().replace(/[^\w\- ]+/g, '').replace(/\s+/g, '_').slice(0, 40) || 'Customer';
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
+  // ---------- Google Sheet (Apps Script web app) client ----------
+  // Requests are sent as text/plain so the browser does not need a CORS preflight (Apps Script does not answer those).
+  const configUrl = () => String((window.HLC_CONFIG && window.HLC_CONFIG.scriptUrl) || '').trim();
+  const validScriptUrl = u => /^https:\/\/script\.google(usercontent)?\.com\/.+/.test(String(u || '').trim());
+  async function cloudPost(url, body, ms = 30000) {
+    if (!validScriptUrl(url)) throw new Error('The Google Sheet link is not set up. It should start with https://script.google.com/');
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = setTimeout(() => ctl && ctl.abort(), ms);
+    let res, txt;
+    try {
+      res = await fetch(url.trim(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow', signal: ctl ? ctl.signal : undefined });
+      txt = await res.text();
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw new Error('No answer from the server. Check the internet connection and try again.');
+      throw new Error('Could not reach the server. Check the internet connection and try again.');
+    } finally { clearTimeout(timer); }
+    try { return JSON.parse(txt); }
+    catch (e) { throw new Error(res && res.ok ? 'The Google Sheet link answered with a web page instead of data. In Apps Script, check the deployment is a Web app with access “Anyone”.' : `Server error ${res ? res.status : ''}`.trim()); }
+  }
+
   return {
     FORM_TYPE, PROJECT_TYPE, VERSION, COMPANY, copyright, NOTICE, COMPANY_LINE, TYPES, CATS, ITEM, CAT_NAME, USE_LABEL, SIZES,
     esc, uid, num, hh, ampm, ampmShort, countHrs, fmtKW, emptyHrs, blocks, slotsText, store, parseFileText,
-    newAppliance, normalise, emptyCustomer, defaultInverter, inScope, runW, phaseLimitW, hourState,
-    analyse, planShift, groupMoves, recommendInverter, autoBalance, chartSVG, svgToPng, LIGHT_PAL,
-    hourPickerHTML, applyPreset, download, shareFile, safeName, today
+    newAppliance, normalise, emptyCustomer, defaultInverter, inScope, runW, phaseLimitW, limits, PH, hourState, severity,
+    analyse, planShift, groupMoves, recommendInverter, autoBalance, planPhases, phaseChartSVG, chartSVG, svgToPng, LIGHT_PAL,
+    configUrl, validScriptUrl, cloudPost,
+    hourPickerHTML, applyPreset, PHASE_COL, download, shareFile, safeName, today
   };
 })();

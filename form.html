@@ -58,6 +58,17 @@
 .done-acts{display:flex;flex-direction:column;gap:8px}
 .done-acts .btn{justify-content:flex-start}
 .solar-extra[hidden]{display:none}
+.sentban{margin-top:14px;border:1px solid #b9dcc6;background:var(--ok-soft);color:#1e5a37;border-radius:var(--radius);padding:10px 14px;font-size:14px;display:block}
+.sentban .btn{margin-left:6px}
+.big-btn{width:100%;min-height:50px;font-size:16px}
+.big-btn:disabled{opacity:.7;cursor:progress}
+details.alt{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:14px;margin-bottom:8px}
+.sent{display:flex;gap:12px;align-items:flex-start}
+.sent h3{margin-bottom:6px}
+.sent-ico{width:40px;height:40px;border-radius:50%;background:var(--ok);color:#fff;display:grid;place-items:center;font-weight:900;font-size:22px;flex:none}
+.sent .ref{font-size:24px;font-weight:800;color:var(--navy);margin:2px 0 8px;letter-spacing:.5px}
+
 
 /* ---------- print (A4 landscape) ---------- */
 @media print{
@@ -120,6 +131,7 @@
       <button class="btn sm" type="button" id="printBlank">Prefer paper? Print a blank form</button>
     </div>
   </section>
+  <div class="sentban" id="sentBanner" hidden role="status"></div>
 
   <div class="sec-h"><span class="step">1</span><h2>Your details</h2></div>
   <div class="card grid">
@@ -183,6 +195,7 @@
 <div id="printArea"></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="config.js"></script>
 <script src="common.js"></script>
 <script>
 (() => {
@@ -194,7 +207,7 @@
   if (!state.customer.declDate) state.customer.declDate = H.today();
 
   let saveT;
-  const save = () => { clearTimeout(saveT); saveT = setTimeout(() => H.store.set('form_draft', state), 250); updateSum(); };
+  const save = () => { state.pendingSid = ''; clearTimeout(saveT); saveT = setTimeout(() => H.store.set('form_draft', state), 250); updateSum(); };
   const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); };
 
   // legal footer
@@ -359,29 +372,77 @@
     bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('[data-close]')) bg.remove(); });
     document.body.appendChild(bg); return bg;
   }
+  const online = () => H.validScriptUrl(H.configUrl());
+  const fileActs = (primary) => `<div class="done-acts">
+        <button class="btn ${primary ? 'gold' : ''}" data-do="share">Send form file (WhatsApp / email)</button>
+        <button class="btn" data-do="dl">Download form file</button>
+        <button class="btn" data-do="pdf">Save a PDF copy for your records</button>
+      </div>`;
+  function sentHTML(ref) {
+    return `<div class="sent"><div class="sent-ico" aria-hidden="true">✓</div><div><h3>Form sent to Regen</h3>
+        <p style="margin:0">Thank you${state.customer.name ? ', ' + H.esc(state.customer.name.split(' ')[0]) : ''}. Your reference number is</p>
+        <p class="ref tnum">${H.esc(ref)}</p>
+        <p class="muted small" style="margin:0">Regen will check your appliances and contact you. Please also send a photo of a recent electricity bill to your Regen contact.</p></div></div>
+      <div class="done-acts" style="margin-top:12px">
+        <button class="btn" data-do="pdf">Save a PDF copy for your records</button>
+        <button class="btn" data-do="new">Start a new form</button>
+      </div>
+      <div class="acts"><button class="btn primary" data-close>Done</button></div>`;
+  }
+  async function doSubmit(m) {
+    const btn = m.querySelector('[data-do="submit"]'), msg = m.querySelector('#subMsg');
+    btn.disabled = true; btn.textContent = 'Sending…'; msg.hidden = true;
+    // keep the same id for retries, so a form that reached the Sheet before a timeout is not saved twice
+    if (!state.pendingSid) { state.pendingSid = H.uid(); H.store.set('form_draft', state); }
+    try {
+      const r = await H.cloudPost(H.configUrl(), { action: 'submit', sid: state.pendingSid, form: payload() });
+      if (!r || !r.ok) throw new Error((r && r.error) || 'The form could not be saved.');
+      state.sent = { ref: r.ref, at: new Date().toISOString() }; state.pendingSid = '';
+      H.store.set('form_draft', state); renderSent();
+      m.querySelector('.modal').innerHTML = sentHTML(r.ref);
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Try again';
+      msg.hidden = false; msg.innerHTML = `${H.esc(err.message)}<br>If it keeps failing, send the form file instead (below).`;
+    }
+  }
   $('#finish').addEventListener('click', () => {
     const errs = validate();
     if (errs.length) {
       modal(`<h3>A few things are missing</h3><div class="errs"><ul>${errs.slice(0, 12).map(x => `<li>${H.esc(x)}</li>`).join('')}</ul></div><div class="acts"><button class="btn primary" data-close>Go back and fix</button></div>`);
       return;
     }
-    const m = modal(`<h3>Your form is ready</h3>
+    const again = state.sent && state.sent.ref;
+    const m = online()
+      ? modal(`<h3>Your form is ready</h3>
+      <p class="muted" style="margin-top:0">Tap Submit to send your answers straight to Regen. Regen checks them in the load calculator to find the inverter size that suits your home.</p>
+      ${again ? `<p class="small" style="margin-top:0">You already sent this form (reference <b>${H.esc(state.sent.ref)}</b>). Submitting again sends your updated answers as a new copy.</p>` : ''}
+      <button class="btn gold big-btn" type="button" data-do="submit">${again ? 'Submit updated form' : 'Submit to Regen'}</button>
+      <div class="errs" id="subMsg" hidden style="margin-top:10px"></div>
+      <details class="alt"><summary>Can't submit? Send the form file instead</summary>${fileActs(false)}
+        <p class="hint" style="margin-bottom:0">Send <b>${H.esc(fileName())}</b> to your Regen contact on WhatsApp or email.</p></details>
+      <div class="acts"><button class="btn" data-close>Close</button></div>`)
+      : modal(`<h3>Your form is ready</h3>
       <p class="muted" style="margin-top:0">Send the form file to your Regen contact on WhatsApp or email. Regen opens it in the load calculator to check which inverter size suits your home.</p>
-      <div class="done-acts">
-        <button class="btn gold" data-do="share">Send form file (WhatsApp / email)</button>
-        <button class="btn" data-do="dl">Download form file</button>
-        <button class="btn" data-do="pdf">Save a PDF copy for your records</button>
-      </div>
+      ${fileActs(true)}
       <p class="hint" style="margin-bottom:0">The file name is <b>${H.esc(fileName())}</b>. Please also send a photo of a recent electricity bill.</p>
       <div class="acts"><button class="btn" data-close>Close</button></div>`);
     m.addEventListener('click', async e => {
       const d = e.target.closest('[data-do]')?.dataset.do; if (!d) return;
       const json = JSON.stringify(payload(), null, 1);
+      if (d === 'submit') doSubmit(m);
       if (d === 'share') { const r = await H.shareFile(fileName(), json, 'application/json', 'Regen load form', `Home energy use form – ${state.customer.name}`); if (r === 'downloaded') toast('Saved to Downloads — attach it in WhatsApp or email'); }
       if (d === 'dl') { H.download(fileName(), json, 'application/json'); toast('Form file saved to Downloads'); }
       if (d === 'pdf') { buildPrint(false); setTimeout(() => window.print(), 50); }
+      if (d === 'new') { H.store.del('form_draft'); location.reload(); }
     });
   });
+  function renderSent() {
+    const el = $('#sentBanner');
+    if (!state.sent || !state.sent.ref) { el.hidden = true; return; }
+    el.hidden = false;
+    el.innerHTML = `<b>Sent to Regen</b> on ${H.esc(new Date(state.sent.at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }))} · reference <b>${H.esc(state.sent.ref)}</b>. You can still change your answers and submit an updated copy. <button class="btn sm" type="button" id="newForm">Start a new form</button>`;
+    $('#newForm').onclick = () => { H.store.del('form_draft'); location.reload(); };
+  }
 
   // ---------- printable form (blank or filled) ----------
   function optList(opts, sel) { return opts.map(o => `<span class="opt${sel === o ? ' sel' : ''}">${H.esc(o)}</span>`).join(''); }
@@ -449,7 +510,7 @@
   }
   $('#printBlank').addEventListener('click', () => { buildPrint(true); setTimeout(() => window.print(), 50); });
 
-  renderCats(); renderList(); updateSum(); sizeCanvas();
+  renderCats(); renderList(); updateSum(); sizeCanvas(); renderSent();
   if (params.get('blank') === '1') { buildPrint(true); window.addEventListener('load', () => setTimeout(() => window.print(), 300)); }
   window.__hlcForm = { state, buildPrint, payload };   // used by automated tests
 })();
