@@ -30,6 +30,20 @@
 .alist{display:flex;flex-direction:column;gap:12px;margin-top:12px}
 .ap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:12px}
 .ap-h{display:flex;align-items:flex-start;gap:10px}
+.ap.min{gap:0;padding:10px 12px}
+.ap.min .ap-body{display:none}
+.ap:not(.min) .ap-sum{display:none}
+.ap-body{display:flex;flex-direction:column;gap:12px}
+.ap-h .nm.tap{cursor:pointer}
+.ap-sum{font-size:13px;color:var(--ink);margin-top:3px;display:flex;flex-direction:column;gap:5px}
+.ap-sum .strip{max-width:300px}
+.ap-sum .warn{color:var(--bad);font-weight:700}
+.ap-sum .pills{display:flex;gap:4px;flex-wrap:wrap}
+.tg{border:1px solid var(--line-2);background:#fff;border-radius:8px;height:36px;padding:0 10px;cursor:pointer;color:var(--navy);font-weight:600;font-size:13px;flex:none;display:inline-flex;align-items:center;gap:4px}
+.tg::after{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin:-4px 0 0 4px}
+.ap:not(.min) .tg::after{transform:rotate(-135deg);margin:3px 0 0 4px}
+.ap-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between}
+.listbar{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-top:14px}
 .ap-h .nm{flex:1;min-width:0}
 .ap-h .nm b{font-size:15.5px;color:var(--navy)}
 .ap-h .nm .muted{font-size:12px}
@@ -184,6 +198,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   <div class="sec-h"><span class="step">3</span><h2>Your appliances</h2></div>
   <p class="muted small" style="margin:0 0 10px">Tap an appliance to add it, then tell us how many you have and the hours you usually use it. If you know the power rating from the label (W or kW), change the typical value we show. If you use a different number of the same appliance at different times (for example 3 fans in the evening but 1 at night), tap it again or use “Add for other times” to make a separate entry for each time.</p>
   <div class="cats" id="cats"></div>
+  <div class="listbar" id="listBar" hidden><span class="muted small" id="listCount"></span><button class="btn sm" type="button" id="toggleAll">Minimise all</button></div>
   <div class="alist" id="alist"></div>
   <div style="margin-top:10px"><button class="btn" type="button" id="addCustom">+ Add an appliance that isn't listed</button></div>
 
@@ -293,7 +308,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     const same = state.appliances.filter(a => a.k === k && k !== 'custom');
     if (same.length) { addAgain(same[same.length - 1], true); return; }
     const a = H.newAppliance(k);
-    state.appliances.push(a);
+    state.appliances.push(a); openCards.add(a.id);
     save(); renderCats(); renderList();
     const el = document.querySelector(`.ap[data-id="${a.id}"]`);
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (k === 'custom') el.querySelector('[data-f="name"]').focus(); }
@@ -306,7 +321,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     Object.assign(a, { name: H.entryName(state.appliances, src), cat: src.cat, w: src.w, unit: src.unit, t: src.t, s: src.s, d: src.d, b: src.b, f: src.f,
       qty: src.qty, qtyOn: 1, hrs: H.emptyHrs(), hpd: 0, hpdManual: false, notes: '' });
     const lastSame = state.appliances.reduce((i, x, j) => (x.k === src.k && String(x.name).replace(/\s\(\d+\)$/, '') === String(src.name).replace(/\s\(\d+\)$/, '') ? j : i), state.appliances.indexOf(src));
-    state.appliances.splice(lastSame + 1, 0, H.normalise(a));
+    state.appliances.splice(lastSame + 1, 0, H.normalise(a)); openCards.add(a.id);
     save(); renderCats(); renderList();
     const el = document.querySelector(`.ap[data-id="${a.id}"]`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -314,15 +329,23 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   }
 
   // ---------- appliance cards ----------
+  // cards are minimised to a one-line summary; a card is open while it is new or still missing details
+  const incomplete = a => !a.w || !H.countHrs(a.hrs) || (a.k === 'custom' && !String(a.name || '').trim());
+  const openCards = new Set(state.appliances.filter(incomplete).map(a => a.id));
   const pwVal = a => a.unit === 'kW' ? +(a.w / 1000).toFixed(3) : +a.w.toFixed(1);
   function cardHTML(a) {
     const it = H.ITEM[a.k];
     const typ = it && it.w ? `Typical: ${it.w >= 1000 ? (it.w / 1000) + ' kW' : it.w + ' W'} each` : 'Enter the power from the label';
-    return `<div class="ap" data-id="${a.id}">
-      <div class="ap-h"><div class="nm">${a.k === 'custom'
+    const open = openCards.has(a.id);
+    const showName = a.k !== 'custom' || !open;
+    return `<div class="ap${open ? '' : ' min'}" data-id="${a.id}">
+      <div class="ap-h"><div class="nm${showName ? ' tap' : ''}"${showName ? ' data-act="toggle"' : ''}>${!showName
         ? `<label class="lbl" for="n_${a.id}">Appliance name</label><input id="n_${a.id}" type="text" data-f="name" value="${H.esc(a.name)}" placeholder="e.g. Pressure cooker">`
-        : `<b>${H.esc(a.name)}</b><div class="muted">${H.esc(H.CAT_NAME[a.cat] || '')}${/\(\d+\)$/.test(a.name) ? ' · separate entry for another time' : ''}</div>`}</div>
+        : `<b>${H.esc(a.name || 'Other appliance')}</b><div class="muted">${H.esc(H.CAT_NAME[a.cat] || '')}${/\(\d+\)$/.test(a.name) ? ' · separate entry for another time' : ''}</div>`}
+        ${sumHTML(a)}</div>
+        <button type="button" class="tg" data-act="toggle" aria-expanded="${open}">${open ? 'Minimise' : 'Edit'}</button>
         <button type="button" class="x" data-act="del" aria-label="Remove ${H.esc(a.name || 'appliance')}">×</button></div>
+      <div class="ap-body">
       <div class="ap-g">
         <div class="fld"><span class="lbl">How many do you have?</span><div class="step"><button type="button" data-act="q-">−</button><input type="number" inputmode="numeric" min="0" data-f="qty" value="${a.qty}" aria-label="Quantity"><button type="button" data-act="q+">+</button></div></div>
         <div class="fld"><span class="lbl">Used at the same time</span><div class="step"><button type="button" data-act="o-">−</button><input type="number" inputmode="numeric" min="0" data-f="qtyOn" value="${a.qtyOn}" aria-label="Used at the same time"><button type="button" data-act="o+">+</button></div></div>
@@ -338,12 +361,41 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
         <div class="q"><span class="lbl">Could you use it at a different time if needed?</span><div class="seg" data-yn="f"><button type="button" data-v="1" class="${a.f ? 'on' : ''}">Yes</button><button type="button" data-v="0" class="${!a.f ? 'on' : ''}">No</button></div></div>
       </div>
       <div class="fld"><label class="lbl" for="t_${a.id}">Notes (optional)</label><input id="t_${a.id}" type="text" data-f="notes" value="${H.esc(a.notes)}" placeholder="Brand/model, room, or anything special about how you use it"></div>
-      <button type="button" class="btn sm again" data-act="again">+ Add for other times</button>
+      <div class="ap-foot"><button type="button" class="btn sm again" data-act="again">+ Add for other times</button><button type="button" class="btn sm primary" data-act="toggle">Done – minimise</button></div>
+      </div>
     </div>`;
   }
+  function sumHTML(a) {
+    const w = a.w ? (a.unit === 'kW' ? +(a.w / 1000).toFixed(3) + ' kW' : +a.w.toFixed(1) + ' W') : '';
+    const hrs = H.slotsText(a.hrs, '12');
+    const strip = `<div class="strip" aria-hidden="true">${a.hrs.map((on, h) => `<i class="${on ? 'on' : ''}${h < 6 || h >= 18 ? ' n' : ''}"></i>`).join('')}</div>`;
+    return `<div class="ap-sum">
+      <span>${a.qtyOn}${a.qtyOn !== a.qty ? ` of ${a.qty}` : ''} used at once${w ? ` × ${w}` : ' · <span class="warn">power rating missing</span>'} · ${hrs ? H.esc(hrs) : '<span class="warn">hours not set</span>'}${a.use !== 'daily' ? ' · ' + H.esc(H.USE_LABEL[a.use]) : ''}</span>
+      ${strip}
+      ${a.b || a.f ? `<span class="pills">${a.b ? '<span class="pill info">Needed in power cuts</span>' : ''}${a.f ? '<span class="pill gold">Can use at another time</span>' : ''}</span>` : ''}</div>`;
+  }
+  function setOpen(id, open) {
+    open ? openCards.add(id) : openCards.delete(id);
+    const a = state.appliances.find(x => x.id === id), el = document.querySelector(`.ap[data-id="${id}"]`);
+    if (a && el) { el.outerHTML = cardHTML(a); }
+    updateListBar();
+  }
+  function updateListBar() {
+    const n = state.appliances.length, bar = $('#listBar');
+    bar.hidden = !n;
+    if (!n) return;
+    $('#listCount').textContent = `${n} appliance entr${n === 1 ? 'y' : 'ies'}`;
+    $('#toggleAll').textContent = state.appliances.some(a => openCards.has(a.id)) ? 'Minimise all' : 'Expand all';
+  }
+  $('#toggleAll').addEventListener('click', () => {
+    const anyOpen = state.appliances.some(a => openCards.has(a.id));
+    state.appliances.forEach(a => anyOpen ? openCards.delete(a.id) : openCards.add(a.id));
+    renderList();
+  });
   function renderList() {
     const L = $('#alist');
     L.innerHTML = state.appliances.length ? state.appliances.map(cardHTML).join('') : '<div class="empty">No appliances added yet. Open a group above and tap an appliance to add it.</div>';
+    updateListBar();
   }
   const findA = el => { const c = el.closest('.ap'); return c && state.appliances.find(a => a.id === c.dataset.id); };
   $('#alist').addEventListener('click', e => {
@@ -352,6 +404,13 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (act === 'del') { state.appliances = state.appliances.filter(x => x !== a); save(); renderCats(); renderList(); return; }
     if (act === 'again') { addAgain(a, false); return; }
+    if (act === 'toggle') {
+      const willOpen = !openCards.has(a.id);
+      setOpen(a.id, willOpen);
+      const el = document.querySelector(`.ap[data-id="${a.id}"]`);
+      if (el && !willOpen && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      return;
+    }
     if (act && /^[qo][+-]$/.test(act)) {
       const f = act[0] === 'q' ? 'qty' : 'qtyOn', d = act[1] === '+' ? 1 : -1;
       a[f] = Math.max(0, a[f] + d);
@@ -468,6 +527,8 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   $('#finish').addEventListener('click', () => {
     const errs = validate();
     if (errs.length) {
+      const need = state.appliances.filter(incomplete);
+      if (need.length) { need.forEach(a => openCards.add(a.id)); renderList(); }
       modal(`<h3>A few things are missing</h3><div class="errs"><ul>${errs.slice(0, 12).map(x => `<li>${H.esc(x)}</li>`).join('')}</ul></div><div class="acts"><button class="btn primary" data-close>Go back and fix</button></div>`);
       return;
     }

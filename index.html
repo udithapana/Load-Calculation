@@ -404,7 +404,8 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
   $('#bLink').addEventListener('click', async () => {
     const url = new URL('form.html', location.href).href;
     const text = `Regen – please fill in this form with your household appliances and the hours you use them, so we can size your hybrid solar system: ${url}`;
-    try { if (navigator.share) { await navigator.share({ title: 'Regen Home Energy Use Form', text, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
+    // the link is already in the text; passing it again as `url` makes Android add it a second time
+    try { if (navigator.share) { await navigator.share({ title: 'Regen Home Energy Use Form', text }); return; } } catch (e) { if (e.name === 'AbortError') return; }
     try { await navigator.clipboard.writeText(text); toast('Form link copied — paste it into WhatsApp or email'); }
     catch (e) { modal(`<h3>Customer form link</h3><input type="text" readonly value="${esc(url)}" onclick="this.select()"><div class="acts"><button class="btn primary" data-close>Done</button></div>`); }
   });
