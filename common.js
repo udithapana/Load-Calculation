@@ -246,6 +246,81 @@ const HLC = (() => {
     return `${base} (${n})`;
   }
 
+  // ---------- monthly energy per entry ----------
+  // days the appliance is used in a month, from "How often"
+  const DAYS = { daily: 30, weekdays: 22, weekends: 8, occasional: 4 };
+  const daysPerMonth = a => DAYS[a && a.use] || 30;
+  const kwhDay = a => (a.qtyOn * a.w * a.d * a.hpd) / 1000;            // on a day it is used
+  const kwhMonth = a => kwhDay(a) * daysPerMonth(a);
+
+  // ---------- quick-fill typical lists (editable starting points), by monthly units ----------
+  const TEMPLATE_LEVELS = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
+  const TPL = (() => {
+  const R = (a, b) => { const h = []; for (let x = a; x < b; x++) h.push(x % 24); return h; };
+  const ALL = 'all';
+  const L = {
+    bulbs:   ['led_bulb', 6, 6, R(18, 23), null, { b: 1 }],
+    tubes:   ['led_tube', 2, 2, R(18, 22), null, { b: 1 }],
+    fridge:  ['fridge', 1, 1, ALL, null, { b: 1 }],
+    tv:      ['tv_small', 1, 1, R(19, 23), null, { b: 1 }],
+    fan1:    ['ceiling_fan', 1, 1, R(19, 23), null, { b: 1 }],
+    fans2:   ['ceiling_fan', 2, 2, R(19, 23).concat(R(13, 15)), null, { b: 1 }],
+    fans3:   ['ceiling_fan', 3, 3, R(19, 24).concat(R(12, 16)), null, { b: 1 }],
+    rice:    ['rice_cooker', 1, 1, [6], 1, {}],
+    router:  ['router', 1, 1, ALL, null, { b: 1 }],
+    charge:  ['chargers', 3, 3, R(21, 24), null, { b: 1 }],
+    iron:    ['iron', 1, 1, [19], 0.5, { f: 1 }],
+    kettle:  ['kettle', 1, 1, [6], 0.25, {}],
+    pump:    ['pump_1', 1, 1, [6, 18], 1, { f: 1, b: 1 }],
+    washer:  ['washer_top', 1, 1, [9, 10], 2, { f: 1, use: 'weekends' }],
+    laptop:  ['laptop', 1, 1, R(9, 15), null, { b: 1 }],
+    outdoor: ['outdoor_light', 2, 2, R(18, 30), null, { b: 1 }],
+    micro:   ['microwave', 1, 1, [19], 0.25, {}],
+    tv2:     ['tv_large', 1, 1, R(19, 22), null, { b: 1 }],
+    sound:   ['sound', 1, 1, [19, 20], null, { use: 'weekends' }],
+    ac1_4:   ['ac_inv_12', 1, 1, R(22, 26), null, { notes: 'Bedroom 1' }],
+    ac1_6:   ['ac_inv_12', 1, 1, R(22, 28), null, { notes: 'Bedroom 1' }],
+    ac1_8:   ['ac_inv_12', 1, 1, R(22, 30), null, { notes: 'Bedroom 1' }],
+    ac2_4:   ['ac_inv_12', 1, 1, R(22, 26), null, { notes: 'Bedroom 2' }],
+    ac2_6:   ['ac_inv_12', 1, 1, R(22, 28), null, { notes: 'Bedroom 2' }],
+    ac2_8:   ['ac_inv_12', 1, 1, R(22, 30), null, { notes: 'Bedroom 2' }],
+    ac3_3:   ['ac_inv_9', 1, 1, R(13, 16), null, { notes: 'Living room, afternoon' }],
+    ac3_5:   ['ac_inv_9', 1, 1, R(13, 18), null, { notes: 'Living room, afternoon' }],
+    geyserH: ['geyser', 1, 1, [6], 0.5, { f: 1 }],
+    geyser:  ['geyser', 1, 1, [5, 6], 1, { f: 1 }],
+    cctv:    ['cctv', 1, 1, ALL, null, { b: 1 }],
+    induct:  ['induction', 1, 1, [18], 0.5, {}],
+    freezer: ['freezer', 1, 1, ALL, null, { b: 1 }],
+    dish:    ['dishwasher', 1, 1, [20], 1, { f: 1 }],
+    ev:      ['ev_charger', 1, 1, [22], 1, { f: 1, w: 3700, notes: 'Single-phase 16 A charger' }],
+  };
+  const T = {
+    100: ['bulbs', 'fridge', 'tv', 'fan1', 'rice', 'router', 'charge', 'iron'],
+    200: ['bulbs', 'tubes', 'fridge', 'tv', 'fans2', 'rice', 'kettle', 'micro', 'router', 'charge', 'iron', 'pump', 'washer', 'laptop', 'outdoor'],
+  };
+  T[300] = T[200].concat(['ac1_4', 'tv2', 'sound']);
+  T[400] = T[200].concat(['ac1_6', 'tv2', 'sound', 'geyserH', 'cctv']);
+  T[500] = T[200].concat(['ac1_8', 'tv2', 'sound', 'geyser', 'cctv', 'induct']);
+  T[600] = T[500].concat(['ac2_4']);
+  T[700] = T[500].concat(['ac2_6', 'freezer']);
+  T[800] = T[500].concat(['ac2_8', 'freezer', 'ac3_3']);
+  T[900] = T[500].concat(['ac2_8', 'freezer', 'ac3_5', 'dish']).map(x => x === 'fans2' ? 'fans3' : x);
+  T[1000] = T[900].concat(['ev']);
+    return { L, T };
+  })();
+  function buildTemplate(level) {
+    const ids = TPL.T[level]; if (!ids) return [];
+    return ids.map(id => {
+      const [key, qty, qtyOn, hrs, hpd, x] = TPL.L[id];
+      const a = newAppliance(key);
+      a.qty = qty; a.qtyOn = qtyOn;
+      a.hrs = hrs === 'all' ? new Array(24).fill(1) : (() => { const h = emptyHrs(); hrs.forEach(i => { h[i] = 1; }); return h; })();
+      Object.assign(a, x); a.b = !!x.b; a.f = !!x.f;
+      if (hpd != null) { a.hpd = hpd; a.hpdManual = true; }
+      return normalise(a);
+    });
+  }
+
   function emptyCustomer() {
     return {
       name: '', phone: '', email: '', address: '',
@@ -355,7 +430,7 @@ const HLC = (() => {
       if (!inScope(a, inv)) continue;
       const n = countHrs(a.hrs);
       if (!n) continue;
-      const perHour = runW(a) * a.d * (a.hpd / n) / 1000;
+      const perHour = runW(a) * a.d * (a.hpd / n) / 1000 * daysPerMonth(a) / 30;   // average day
       a.hrs.forEach((on, h) => { if (on) eHour[h] += perHour; });
     }
     eHour.forEach((e, h) => { energy += e; if (h >= 6 && h < 18) eDay += e; else eNight += e; });
@@ -751,7 +826,7 @@ const HLC = (() => {
     esc, uid, num, hh, ampm, ampmShort, countHrs, fmtKW, emptyHrs, blocks, slotsText, store, parseFileText,
     newAppliance, normalise, emptyCustomer, defaultInverter, inScope, runW, phaseLimitW, limits, PH, hourState, severity,
     analyse, planShift, groupMoves, recommendInverter, autoBalance, planPhases, phaseChartSVG, chartSVG, svgToPng, svgToJpeg, LIGHT_PAL,
-    configUrl, validScriptUrl, cloudPost,
+    configUrl, validScriptUrl, cloudPost, DAYS, daysPerMonth, kwhDay, kwhMonth, TEMPLATE_LEVELS, buildTemplate,
     CAPACITIES, TARIFF_GROUPS, TARIFFS, TOU_TARIFFS, TOU_PERIODS, isTouTariff, touOn, touTotal, hasTouValues, capacityText, tariffOptionsHTML, touSplit, entryName,
     hourPickerHTML, applyPreset, PHASE_COL, download, shareFile, safeName, today
   };

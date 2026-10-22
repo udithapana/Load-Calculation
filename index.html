@@ -65,7 +65,12 @@
 .alist{display:flex;flex-direction:column;gap:8px}
 .ea{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
 .ea.off{opacity:.6}
-.ea>summary{list-style:none;cursor:pointer;padding:10px 12px;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(120px,1.2fr) auto;gap:6px 14px;align-items:center}
+.ea>summary{list-style:none;cursor:pointer;padding:10px 12px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(92px,.8fr) minmax(0,1fr) minmax(120px,1.2fr) minmax(110px,auto);grid-template-areas:"nm mo ld st bd";gap:6px 14px;align-items:center}
+.ea .nm{grid-area:nm}.ea .mo{grid-area:mo}.ea .ld{grid-area:ld}.ea .strip{grid-area:st}.ea .badges{grid-area:bd}
+.ea .mo{font-size:13px;color:var(--ink);line-height:1.25}
+.ea .mo b{color:var(--navy);font-size:14px}
+.ea .mo small{display:block;color:var(--muted);font-size:11.5px}
+.qfill{min-height:32px;padding:5px 8px;font-size:13px;width:auto;max-width:100%;border-color:var(--gold);font-weight:600;color:var(--navy)}
 .ea>summary::-webkit-details-marker{display:none}
 .ea .nm{font-weight:700;color:var(--navy);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ea .nm small{display:block;font-weight:500;color:var(--muted);font-size:12px}
@@ -77,8 +82,7 @@
 .eg .pwf{grid-column:1/-1}
 @media (min-width:700px){.eg .pwf{grid-column:span 2}}
 .ea .acts{display:flex;gap:8px;flex-wrap:wrap}
-@media (max-width:640px){.ea>summary{grid-template-columns:minmax(0,1fr) auto}.ea .strip{grid-column:1/-1}.ea .ld{text-align:right}.ea .badges{grid-column:1/-1;justify-content:flex-start}}
-.ea .badges:empty{display:none}
+@media (max-width:640px){.ea>summary{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"nm ld" "nm mo" "st st" "bd bd"}.ea .ld,.ea .mo{text-align:right}.ea .badges{justify-content:flex-start}.ea .badges:empty{display:none}}
 
 /* analysis */
 .inv{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end}
@@ -231,6 +235,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     <div class="atool">
       <button class="btn primary" type="button" id="bAdd">+ Add appliance</button>
       <button class="btn sm" type="button" id="bExpand">Expand all</button>
+      <select class="qfill" id="qFill" aria-label="Quick fill with a typical home"></select>
       <span class="sp"></span>
       <span class="muted small" id="appCount"></span>
     </div>
@@ -407,10 +412,17 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
   // ---------- appliances tab ----------
   const pwVal = a => a.unit === 'kW' ? +(a.w / 1000).toFixed(3) : +a.w.toFixed(1);
   const stripHTML = hrs => `<div class="strip" title="${esc(H.slotsText(hrs))}">${hrs.map((on, h) => `<i class="${on ? 'on' : ''}${h < 6 || h >= 18 ? ' n' : ''}"></i>`).join('')}</div>`;
+  const fmtMonth = v => v >= 100 ? Math.round(v).toLocaleString('en-US') : v >= 10 ? v.toFixed(1) : v.toFixed(2);
+  function updateCount() {
+    const n = P.appliances.length, inScope = P.appliances.filter(a => H.inScope(a, P.inv));
+    const month = inScope.reduce((s, a) => s + H.kwhMonth(a), 0);
+    $('#appCount').innerHTML = n ? `${n} appliance entr${n === 1 ? 'y' : 'ies'} · connected ${(P.appliances.reduce((s, a) => s + a.qty * a.w, 0) / 1000).toFixed(2)} kW · <b>${Math.round(month).toLocaleString('en-US')} kWh/month</b>${P.customer.units ? ` <span class="muted">(bill ${esc(P.customer.units)})</span>` : ''}` : '';
+  }
   function sumHTML(a) {
     const scoped = H.inScope(a, P.inv);
     const kw = H.runW(a) / 1000;
     return `<div class="nm">${esc(a.name || 'Unnamed appliance')}<small>${esc(H.CAT_NAME[a.cat] || '')} · ${esc(H.slotsText(a.hrs) || 'no hours set')}</small></div>
+      <div class="mo tnum" title="${esc(`${(H.kwhDay(a)).toFixed(2)} kWh on a day it is used × ${H.daysPerMonth(a)} days`)}"><b>${fmtMonth(H.kwhMonth(a))}</b> kWh/month<small>${H.daysPerMonth(a) === 30 ? 'every day' : H.daysPerMonth(a) + ' days a month'}</small></div>
       <div class="ld tnum">${a.qtyOn}${a.qtyOn !== a.qty ? ` of ${a.qty}` : ''} × ${a.w >= 1000 ? (a.w / 1000) + ' kW' : a.w + ' W'} = <b>${kw.toFixed(2)} kW</b></div>
       ${stripHTML(a.hrs)}
       <div class="badges">${a.b ? '<span class="pill info">Power cut</span>' : ''}${a.f ? '<span class="pill gold">Flexible</span>' : ''}${+P.inv.phase === 3 ? `<span class="pill info">${a.ph === '3P' ? '3-phase' : (a.ph || 'L1')}${a.phLock ? ' · fixed' : ''}</span>` : ''}${!scoped ? '<span class="pill high">Not checked</span>' : ''}</div>`;
@@ -444,12 +456,13 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       <div class="acts"><button class="btn sm" type="button" data-act="dup" title="Copy this appliance as a separate entry, e.g. for other times">Duplicate</button><button class="btn sm danger" type="button" data-act="del">Delete</button></div>`;
   }
   function renderApps() {
-    $('#appCount').textContent = P.appliances.length ? `${P.appliances.length} appliances · connected ${(P.appliances.reduce((s, a) => s + a.qty * a.w, 0) / 1000).toFixed(2)} kW` : '';
+    updateCount();
+    $('#qFill').innerHTML = '<option value="">Quick fill: typical home…</option>' + H.TEMPLATE_LEVELS.map(l => `<option value="${l}">Typical ${l.toLocaleString('en-US')} kWh/month home</option>`).join('');
     $('#alist').innerHTML = P.appliances.length ? P.appliances.map(a => `<details class="ea${a.inc ? '' : ' off'}" data-id="${a.id}"${openSet.has(a.id) ? ' open' : ''}><summary>${sumHTML(a)}</summary><div class="body">${openSet.has(a.id) ? bodyHTML(a) : ''}</div></details>`).join('')
       : '<div class="card muted">No appliances yet. Open the customer\'s form file from the Customer tab, or add appliances one by one.</div>';
   }
   const findA = el => { const d = el.closest('.ea'); return d && P.appliances.find(a => a.id === d.dataset.id); };
-  const refreshSum = (a) => { const d = document.querySelector(`.ea[data-id="${a.id}"]`); if (d) { d.querySelector('summary').innerHTML = sumHTML(a); d.classList.toggle('off', !a.inc); } };
+  const refreshSum = (a) => { const d = document.querySelector(`.ea[data-id="${a.id}"]`); if (d) { d.querySelector('summary').innerHTML = sumHTML(a); d.classList.toggle('off', !a.inc); } updateCount(); };
   $('#alist').addEventListener('toggle', e => {
     const d = e.target; if (!d.classList || !d.classList.contains('ea')) return;
     const a = P.appliances.find(x => x.id === d.dataset.id); if (!a) return;
@@ -496,6 +509,29 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     const a = findA(e.target); const f = e.target.dataset.f; if (!a || !f) return;
     if (['cat', 't', 'use', 'ph'].includes(f)) { a[f] = e.target.value; if (f === 't') { a.s = H.TYPES[a.t].s; const s = e.target.closest('.body').querySelector('[data-f="s"]'); if (s) s.value = a.s; } refreshSum(a); changed(); }
     if (f === 'qtyOn' || f === 'qty') { e.target.closest('.body').querySelector('[data-f="qtyOn"]').value = a.qtyOn; }
+  });
+  // quick fill: typical household lists by monthly units – a starting point to edit
+  $('#qFill').addEventListener('change', e => {
+    const level = +e.target.value; e.target.value = '';
+    if (!level) return;
+    const fill = mode => {
+      const list = H.buildTemplate(level);
+      undoApps = null;
+      if (mode === 'replace') { P.appliances = list; openSet.clear(); }
+      else for (const a of list) { if (P.appliances.some(x => x.name === a.name)) a.name = H.entryName(P.appliances, a); P.appliances.push(a); }
+      if (+P.inv.phase === 3) H.autoBalance(P.appliances, P.inv, true);
+      renderApps(); changed();
+      const tot = P.appliances.filter(a => H.inScope(a, P.inv)).reduce((s2, a) => s2 + H.kwhMonth(a), 0);
+      toast(`Typical ${level} kWh/month list loaded (${Math.round(tot)} kWh/month) – edit it to match the customer`);
+    };
+    if (!P.appliances.length) { fill('replace'); return; }
+    const m = modal(`<h3>Typical ${level} kWh/month home</h3><p>This project already has ${P.appliances.length} appliance entr${P.appliances.length === 1 ? 'y' : 'ies'}. Replace them with the typical list, or add the typical list to them?</p>
+      <div class="acts"><button class="btn" data-close>Cancel</button><button class="btn" id="qAdd">Add to the list</button><button class="btn primary" id="qRep">Replace the list</button></div>`);
+    m.querySelector('#qAdd').onclick = () => { m.remove(); fill('add'); };
+    m.querySelector('#qRep').onclick = () => {
+      const snap = JSON.parse(JSON.stringify(P.appliances)); m.remove(); fill('replace');
+      toast(`Typical ${level} kWh/month list loaded`, { label: 'Undo', fn: () => { P.appliances = snap.map(H.normalise); renderApps(); changed(); } });
+    };
   });
   $('#bExpand').addEventListener('click', () => {
     const all = P.appliances.every(a => openSet.has(a.id));
@@ -670,7 +706,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       <div class="kpi ${res.totalOver.length ? 'bad' : ''}"><div class="k">Inverter loading at peak</div><div class="v">${Math.round(res.peak / res.rated * 100)}<small>%</small></div><div class="s">of ${inv.kw} kW ${three ? 'three' : 'single'}-phase</div></div>
       ${three ? `<div class="kpi ${maxPh > res.pl + 0.01 ? 'bad' : maxPh > res.pl * inv.warn / 100 ? 'warn' : ''}"><div class="k">Highest phase load</div><div class="v">${H.fmtKW(maxPh)} <small>kW</small></div><div class="s">${kMaxPh} · ${Math.round(maxPh / res.pl * 100)}% of ${H.fmtKW(res.pl)} kW${res.assumed ? ' (assumed)' : ''}</div></div>` : ''}
       <div class="kpi ${res.over.length ? 'bad' : ''}"><div class="k">Hours over a limit</div><div class="v">${res.over.length}<small> h</small></div><div class="s">${three ? `by limit: total ${res.totalOver.length} h · phase ${res.phaseOverAny.length} h · imbalance ${res.unbalHours.length} h` : `${res.high.length} h above ${inv.warn}%`}</div></div>
-      <div class="kpi"><div class="k">Daily energy</div><div class="v">${res.energy.toFixed(1)} <small>kWh</small></div><div class="s">${res.eDay.toFixed(1)} day · ${res.eNight.toFixed(1)} night (6 PM–6 AM)</div></div>
+      <div class="kpi"><div class="k">Average daily energy</div><div class="v">${res.energy.toFixed(1)} <small>kWh</small></div><div class="s">${Math.round(res.energy * 30).toLocaleString('en-US')} kWh/month · ${res.eDay.toFixed(1)} day / ${res.eNight.toFixed(1)} night</div></div>
       <div class="kpi"><div class="k">Connected load</div><div class="v">${(res.connected / 1000).toFixed(2)} <small>kW</small></div><div class="s">${inv.scope === 'backup' ? 'power-cut loads only' : 'all appliances'}</div></div>
     </div>`;
     const togT = plan && plan.moves.length ? `<div class="seg" id="cMode"><button type="button" data-v="now" class="${!showAdj ? 'on' : ''}">Customer's times</button><button type="button" data-v="adj" class="${showAdj ? 'on' : ''}">Suggested times</button></div>` : '';
@@ -1072,9 +1108,13 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     step(`Step ${three ? 5 : 4} – Motor starting surge`,
       `Starting load = L(h) + (starting multiplier − 1) × rating of one unit of the largest motor running;  limit = surge × rated = ${inv.surge} × ${inv.kw} kW = ${(inv.kw * inv.surge).toFixed(1)} kW${three ? `;  per phase: ${kw(LIM.ppk)} kW` : ''}`,
       sH && sH.on.length ? `Worst hour ${H.hh(sH.h)}–${H.hh(sH.h + 1)}: ${kw(sH.total)} kW + ${kw(sH.extra)} kW (${sH.extraName} starting) = ${kw(sH.surgePeak)} kW → ${sH.surgeOver ? 'ABOVE the surge capability' : 'within the surge capability'}.` : '');
-    step(`Step ${three ? 6 : 5} – Daily energy`,
-      'E (kWh/day) = sum of (P × duty factor × hours per day) ÷ 1000;  duty factor and hours per day affect energy only, not the peak',
-      `Total ${res.energy.toFixed(2)} kWh/day: ${res.eDay.toFixed(2)} kWh 6 AM–6 PM and ${res.eNight.toFixed(2)} kWh 6 PM–6 AM. About ${Math.round(res.energy * 30)} kWh per month (30 days).`);
+    {
+      const big2 = scoped.slice().sort((a, b) => H.kwhMonth(b) - H.kwhMonth(a))[0];
+      const month = scoped.reduce((s2, a) => s2 + H.kwhMonth(a), 0);
+      step(`Step ${three ? 6 : 5} – Monthly and daily energy`,
+        'Energy per entry (kWh/month) = P × duty factor × hours per day ÷ 1000 × days used per month;  days: every day 30, weekdays 22, weekends 8, occasionally 4.  Average day = monthly ÷ 30.  Duty factor and hours per day affect energy only, not the peak.',
+        `${big2 ? `Largest: ${big2.name}: ${n0(H.runW(big2))} W × ${Math.round(big2.d * 100)}% × ${big2.hpd} h ÷ 1000 × ${H.daysPerMonth(big2)} days = ${H.kwhMonth(big2).toFixed(1)} kWh/month. ` : ''}Total ${Math.round(month)} kWh/month${c.units ? ` (customer's bill: ${c.units} kWh/month)` : ''}; average day ${res.energy.toFixed(2)} kWh: ${res.eDay.toFixed(2)} kWh 6 AM–6 PM and ${res.eNight.toFixed(2)} kWh 6 PM–6 AM. Every entry's kWh/month is in section 6.`);
+    }
     {
       const est = H.touSplit(res.eHour), m30 = x => Math.round(x * 30);
       step(`Step ${three ? 7 : 6} – Energy by time-of-use period`,
@@ -1090,15 +1130,17 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
 
     // ===== 6. appliances =====
     section('6. Appliance schedule');
-    const aCols = fit([{ h: '#', w: 5, align: 'center' }, { h: 'Appliance', w: three ? 34 : 38 }, { h: 'Qty', w: 7, align: 'center' }, { h: 'On at once', w: 9, align: 'center' }, { h: 'W each', w: 11, align: 'right' },
-      { h: 'Running W', w: 12, align: 'right' }, { h: 'Hours of use', w: 30 }, { h: 'h/day', w: 9.5, align: 'center' }, { h: 'Duty', w: 9, align: 'center' }, { h: 'kWh/day', w: 12.5, align: 'right' },
-      ...(three ? [{ h: 'Phase', w: 9, align: 'center' }] : []), { h: 'Cut', w: 7, align: 'center' }, { h: 'Move', w: 8, align: 'center' }]);
+    const aCols = fit([{ h: '#', w: 5, align: 'center' }, { h: 'Appliance', w: three ? 31 : 35 }, { h: 'Qty', w: 6, align: 'center' }, { h: 'On at once', w: 8, align: 'center' }, { h: 'W each', w: 10, align: 'right' },
+      { h: 'Running W', w: 12.5, align: 'right' }, { h: 'Hours of use', w: 24 }, { h: 'h/day', w: 8.5, align: 'center' }, { h: 'Duty', w: 8, align: 'center' }, { h: 'kWh / day', w: 10.5, align: 'right' },
+      { h: 'Days', w: 7.5, align: 'center' }, { h: 'kWh / month', w: 12, align: 'right' },
+      ...(three ? [{ h: 'Phase', w: 8.5, align: 'center' }] : []), { h: 'Cut', w: 6.5, align: 'center' }, { h: 'Move', w: 8.5, align: 'center' }]);
     const aRows = P.appliances.map((a, i) => [i + 1, a.name + (H.inScope(a, inv) ? '' : ' (not checked)'), a.qty, a.qtyOn, n0(a.w), n0(H.runW(a)), H.slotsText(a.hrs) || '—', a.hpd, Math.round(a.d * 100) + '%',
-      (H.runW(a) * a.d * a.hpd / 1000).toFixed(2), ...(three ? [a.ph === '3P' ? '3-ph' : (a.ph || 'L1')] : []), a.b ? 'Yes' : 'No', a.f ? 'Yes' : 'No']);
+      H.kwhDay(a).toFixed(2), H.daysPerMonth(a), H.kwhMonth(a).toFixed(1), ...(three ? [a.ph === '3P' ? '3-ph' : (a.ph || 'L1')] : []), a.b ? 'Yes' : 'No', a.f ? 'Yes' : 'No']);
     const totRun = scoped.reduce((s, a) => s + H.runW(a), 0);
-    aRows.push(['', 'Total (appliances checked)', '', '', '', n0(totRun), '', '', '', res.energy.toFixed(2), ...(three ? [''] : []), '', '']);
+    const totMonth = scoped.reduce((s2, a) => s2 + H.kwhMonth(a), 0);
+    aRows.push(['', 'Total (appliances checked)', '', '', '', n0(totRun), '', '', '', '', '', totMonth.toFixed(1), ...(three ? [''] : []), '', '']);
     table(aCols, aRows, { keepLast: true, fs: 6.9, rowFill: i => i === aRows.length - 1 ? 'E8EDF5' : (i % 2 ? 'F8F9FC' : null), bold: i => i === aRows.length - 1, color: (i) => (i < P.appliances.length && !H.inScope(P.appliances[i], inv)) ? MUTED : INK });
-    para('On at once = units used at the same time. Running W = on at once × W each, the most this entry adds to any hour. Cut = needed during power cuts. Move = the customer can use it at another time. The total running load is not the peak, because appliances are not all on in the same hour (see section 7).', { size: 7.2, color: MUTED });
+    para('On at once = units used at the same time. Running W = on at once × W each, the most this entry adds to any hour. kWh / day = on a day it is used. Days = days used per month (every day 30, weekdays 22, weekends 8, occasionally 4). kWh / month = kWh / day × days. Cut = needed during power cuts. Move = the customer can use it at another time. The total running load is not the peak, because appliances are not all on in the same hour (see section 7).', { size: 7.2, color: MUTED });
 
     // ===== 7. hour by hour =====
     section('7. Hour-by-hour load');
@@ -1428,7 +1470,8 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
     kv('Hours above warning level', res.high.length, { ...S.resTxt, numFmt: '0' }, `COUNTIF(${stR},"HIGH")`);
     const rAppTot = 4 + P.appliances.length;   // Appliances sheet total row (0-based)
     kv('Connected load (kW)', +(res.connected / 1000).toFixed(3), S.res, `Appliances!$H$${rAppTot + 1}/1000`);
-    kv('Daily energy (kWh/day)', +res.energy.toFixed(2), S.res, `Appliances!$M$${rAppTot + 1}`);
+    kv('Monthly energy (kWh/month)', +(res.energy * 30).toFixed(1), S.res, `Appliances!$O$${rAppTot + 1}`);
+    kv('Average daily energy (kWh/day)', +res.energy.toFixed(2), S.res, `Appliances!$O$${rAppTot + 1}/30`);
     kv('Energy 6 PM – 6 AM (kWh/day)', +res.eNight.toFixed(2), S.vn);
     kv('Largest starting surge (kW)', +(res.maxSurgePeak / 1000).toFixed(2), S.vn);
     r++;
@@ -1479,13 +1522,13 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
 
     // ================= Appliances =================
     const ap = wb.sheet('Appliances'); ap.landscape = true; ap.footer = footer; ap.freeze = [4, 2]; ap.printRows = [3, 3];
-    const AH = ['No', 'Appliance', 'Group', 'Load type', 'Qty', 'Used at same time', 'Rating each (W)', 'Connected (W)', 'Running (W)', 'Surge (×)', 'Duty', 'Hours / day', 'Energy (kWh/day)', 'Power cut', 'Time can change', 'Phase', 'How often', 'Time of use', 'In check', 'Notes'];
+    const AH = ['No', 'Appliance', 'Group', 'Load type', 'Qty', 'Used at same time', 'Rating each (W)', 'Connected (W)', 'Running (W)', 'Surge (×)', 'Duty', 'Hours / day', 'Energy on a day used (kWh)', 'Days used / month', 'Energy (kWh/month)', 'Power cut', 'Time can change', 'Phase', 'How often', 'Time of use', 'In check', 'Notes'];
     if (three) AH.push('Phase fixed by wiring', 'Suggested phase (option C)');
     const sugPh = new Map(phasePlan ? phasePlan.moves.map(m => [m.id, m.to]) : []);
-    [5, 34, 18, 16, 6, 9, 10, 11, 11, 8, 7, 8, 11, 8, 9, 7, 12, 30, 7, 30, 9, 11].forEach((w, i) => ap.width(i, w));
+    [5, 34, 18, 16, 6, 9, 10, 11, 11, 8, 7, 8, 11, 9, 11, 8, 9, 7, 12, 30, 7, 30, 9, 11].forEach((w, i) => ap.width(i, w));
     ap.set(0, 0, 'APPLIANCE SCHEDULE', S.title); ap.style(0, 0, 0, AH.length - 1, S.title); ap.merge(0, 0, 0, AH.length - 1); ap.height(0, 24);
     ap.set(1, 0, `${c.name || 'Customer'} · ${c.address ? c.address.replace(/\s+/g, ' ') : ''}`, S.sub); ap.merge(1, 0, 1, AH.length - 1);
-    ap.set(2, 0, 'Connected = Qty × rating. Running = units used at the same time × rating (used for the peak check). Energy = running × duty × hours per day.', S.note); ap.merge(2, 0, 2, AH.length - 1);
+    ap.set(2, 0, 'Connected = Qty × rating. Running = units used at the same time × rating (used for the peak check). Energy on a day used = running × duty × hours per day. Monthly energy = that × days used per month (every day 30, weekdays 22, weekends 8, occasionally 4).', S.note); ap.merge(2, 0, 2, AH.length - 1);
     AH.forEach((h, i) => ap.set(3, i, h, S.th)); ap.height(3, 32);
     P.appliances.forEach((a, i) => {
       const rr = 4 + i, R1 = rr + 1, inc = H.inScope(a, inv);
@@ -1493,18 +1536,20 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       ap.set(rr, 4, a.qty, S.tdN); ap.set(rr, 5, a.qtyOn, S.tdN); ap.set(rr, 6, a.w, S.tdN);
       ap.set(rr, 7, a.qty * a.w, S.tdN, `E${R1}*G${R1}`); ap.set(rr, 8, a.qtyOn * a.w, S.tdN, `F${R1}*G${R1}`);
       ap.set(rr, 9, a.s, S.tdN2); ap.set(rr, 10, a.d, S.tdP); ap.set(rr, 11, a.hpd, S.tdN2);
-      ap.set(rr, 12, +(a.qtyOn * a.w * a.d * a.hpd / 1000).toFixed(4), S.tdN2, `I${R1}*K${R1}*L${R1}/1000`);
-      ap.set(rr, 13, a.b ? 'Yes' : 'No', S.tdC); ap.set(rr, 14, a.f ? 'Yes' : 'No', S.tdC); ap.set(rr, 15, three ? (a.ph || 'L1') : '1φ', S.tdC);
-      ap.set(rr, 16, H.USE_LABEL[a.use], S.td); ap.set(rr, 17, H.slotsText(a.hrs) || '—', S.tdW); ap.set(rr, 18, inc ? 'Yes' : 'No', S.tdC); ap.set(rr, 19, a.notes, S.tdW);
-      if (three) { ap.set(rr, 20, a.phLock ? 'Yes' : 'No', S.tdC); ap.set(rr, 21, sugPh.get(a.id) || '', sugPh.has(a.id) ? { ...S.tdC, font: { b: 1, sz: 9.5, color: '5C3D00' }, fill: 'FFD970' } : S.tdC); }
+      ap.set(rr, 12, +H.kwhDay(a).toFixed(4), S.tdN2, `I${R1}*K${R1}*L${R1}/1000`);
+      ap.set(rr, 13, H.daysPerMonth(a), S.tdN);
+      ap.set(rr, 14, +H.kwhMonth(a).toFixed(3), S.tdN2, `M${R1}*N${R1}`);
+      ap.set(rr, 15, a.b ? 'Yes' : 'No', S.tdC); ap.set(rr, 16, a.f ? 'Yes' : 'No', S.tdC); ap.set(rr, 17, three ? (a.ph || 'L1') : '1φ', S.tdC);
+      ap.set(rr, 18, H.USE_LABEL[a.use], S.td); ap.set(rr, 19, H.slotsText(a.hrs) || '—', S.tdW); ap.set(rr, 20, inc ? 'Yes' : 'No', S.tdC); ap.set(rr, 21, a.notes, S.tdW);
+      if (three) { ap.set(rr, 22, a.phLock ? 'Yes' : 'No', S.tdC); ap.set(rr, 23, sugPh.get(a.id) || '', sugPh.has(a.id) ? { ...S.tdC, font: { b: 1, sz: 9.5, color: '5C3D00' }, fill: 'FFD970' } : S.tdC); }
     });
     const tr = 4 + P.appliances.length, last = tr;   // total row
     ap.set(tr, 0, '', S.totL); ap.set(tr, 1, 'Total (appliances in check)', S.totL); for (let k = 2; k < AH.length; k++) ap.set(tr, k, '', S.totL);
-    const sumIf = col => `SUMIF($S$5:$S$${last},"Yes",${col}$5:${col}$${last})`;
+    const sumIf = col => `SUMIF($U$5:$U$${last},"Yes",${col}$5:${col}$${last})`;
     const tot = (fn) => P.appliances.filter(a => H.inScope(a, inv)).reduce((s, a) => s + fn(a), 0);
     ap.set(tr, 7, tot(a => a.qty * a.w), S.tot, sumIf('H'));
     ap.set(tr, 8, tot(a => a.qtyOn * a.w), S.tot, sumIf('I'));
-    ap.set(tr, 12, +tot(a => a.qtyOn * a.w * a.d * a.hpd / 1000).toFixed(3), S.tot2, sumIf('M'));
+    ap.set(tr, 14, +tot(a => H.kwhMonth(a)).toFixed(2), S.tot2, sumIf('O'));
     legal(ap, tr + 2, 0, 12);
 
     // ================= Profile sheets =================
