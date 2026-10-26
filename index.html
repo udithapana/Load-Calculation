@@ -802,7 +802,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
         <td class="on">${st.on.map(o => `${esc(o.name)}${o.n > 1 ? ' ×' + o.n : ''} (${kwTxt(o.p)}${three ? ', ' + o.ph : ''})`).join(', ') || '—'}</td></tr>`;
     }).join('')}</tbody></table></div>`;
 
-    const repCard = `<div class="card repcard"><div><b>Report</b><p class="small muted" style="margin:2px 0 0">PDF with the results, charts, recommendations, the calculation steps, the appliance schedule and the hour-by-hour table.</p></div>
+    const repCard = `<div class="card repcard"><div><b>Report</b><p class="small muted" style="margin:2px 0 0">PDF with the results, charts, recommendations, the calculation steps, the appliance schedule, the hour-by-hour table and a separate battery backup equipment page.</p></div>
       <div class="repacts"><button class="btn primary" type="button" data-rep="dl">Download report (PDF)</button><button class="btn" type="button" data-rep="share">Share report</button><button class="btn" type="button" data-rep="xl">Excel sheet</button></div></div>`;
     out.innerHTML = `${dsWarn}<div class="verdict ${v.cls}"><div class="ico">${v.ico}</div><div><h3>${esc(v.h)}</h3><p>${esc(v.p)}</p></div></div>${kpis}${chart}${recs}${notes}${repCard}
       <div class="sec-h"><h2>Hour by hour</h2><p>${showAdj ? 'With suggested time changes' : "Customer's times of use"}</p></div>${tbl}${repCard}`;
@@ -860,6 +860,18 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       };
       img.onerror = () => reject(new Error('Logo not found'));
       img.src = 'regen-logo.png';
+    });
+  }
+  function dataUrlToJpeg(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0);
+        c.toBlob(b => b ? b.arrayBuffer().then(buf => resolve({ bytes: new Uint8Array(buf), w: c.width, h: c.height })) : reject(new Error('signature')), 'image/jpeg', 0.92);
+      };
+      img.onerror = () => reject(new Error('signature'));
+      img.src = src;
     });
   }
   async function buildReport(P) {
@@ -1181,6 +1193,84 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       d.text(x, y + 11.5, l, { size: 7.2, color: MUTED });
     });
     y += 14;
+    // ===== 9. battery backup equipment (separate page: the customer's declared selection) =====
+    newPage();
+    section('9. Battery backup equipment – customer\'s selection');
+    {
+      const invB = Object.assign({}, inv, { scope: 'backup' });
+      const bk = P.appliances.filter(a => a.b);
+      const bkIn = bk.filter(a => H.inScope(a, invB));
+      const resB = H.analyse(P.appliances, invB);
+      const formTxt = P.formRef ? `Home Energy Use Form ${P.formRef}` : 'Home Energy Use Form';
+      const signedOn = c.declDate ? new Date(c.declDate + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : (P.formSubmitted ? new Date(P.formSubmitted).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
+      para(`The equipment below is what the customer marked as "needed during power cuts" in the ${formTxt}${c.signature ? `, signed by the customer${signedOn ? ' on ' + signedOn : ''}` : ''}. It is the equipment Regen's initial battery backup sizing is based on. Equipment not listed here is not included in the backup design.`, { size: 8.4 });
+      kv([['Customer', c.name], ['Backup hours requested', c.backupHrs ? c.backupHrs + ' h' : 'Not stated'], ['Power cuts (customer)', c.outages], ['Form reference', [P.formRef, P.formSubmitted ? 'received ' + new Date(P.formSubmitted).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''].filter(Boolean).join(' · ')]]);
+      if (!bk.length) {
+        para('The customer did not mark any equipment as needed during power cuts.', { bold: true, color: 'C62828' });
+      } else {
+        const cols = fit([{ h: '#', w: 5, align: 'center' }, { h: 'Appliance', w: three ? 40 : 46 }, { h: 'Qty', w: 7, align: 'center' }, { h: 'On at once', w: 9, align: 'center' }, { h: 'W each', w: 11, align: 'right' },
+          { h: 'Running W', w: 12.5, align: 'right' }, { h: 'Hours of use', w: 32 }, { h: 'h/day', w: 9, align: 'center' }, { h: 'kWh / day', w: 11, align: 'right' }, ...(three ? [{ h: 'Phase', w: 9, align: 'center' }] : [])]);
+        const rows = bk.map((a, i) => [i + 1, a.name + (H.inScope(a, invB) ? '' : ' (not checked)'), a.qty, a.qtyOn, n0(a.w), n0(H.runW(a)), H.slotsText(a.hrs) || '—', a.hpd, H.kwhDay(a).toFixed(2), ...(three ? [a.ph === '3P' ? '3-ph' : (a.ph || 'L1')] : [])]);
+        const runTot = bkIn.reduce((s2, a) => s2 + H.runW(a), 0), dayTot = bkIn.reduce((s2, a) => s2 + H.kwhDay(a), 0);
+        rows.push(['', `Total – ${bk.length} backup entr${bk.length === 1 ? 'y' : 'ies'}`, '', '', '', n0(runTot), '', '', dayTot.toFixed(2), ...(three ? [''] : [])]);
+        table(cols, rows, { keepLast: true, fs: 7.2, rowFill: i => i === rows.length - 1 ? 'E8EDF5' : (i % 2 ? 'F8F9FC' : null), bold: i => i === rows.length - 1 });
+        // energy for the requested backup time: busiest run of consecutive hours, on a day all backup equipment is used
+        const eOn = new Array(24).fill(0);
+        bkIn.forEach(a => { const n = H.countHrs(a.hrs); if (!n) return; const per = H.runW(a) * a.d * (a.hpd / n) / 1000; a.hrs.forEach((on, h) => { if (on) eOn[h] += per; }); });
+        const B = parseFloat(c.backupHrs);
+        let win = null;
+        if (isFinite(B) && B > 0) {
+          const n = Math.min(24, Math.ceil(B));
+          for (let s = 0; s < 24; s++) { let e = 0; for (let k = 0; k < n; k++) e += eOn[(s + k) % 24]; if (!win || e > win.e + 1e-9) win = { s, n, e }; }
+        }
+        const pk = resB.peak, pkOK = pk <= res.rated + 0.01;
+        const sum = [
+          ['Peak backup load', `${kw(pk)} kW at ${H.hh(resB.peakHour)}–${H.hh(resB.peakHour + 1)} (${pct(pk / res.rated)} of the ${inv.kw} kW inverter) – ${pkOK ? 'within rating' : 'OVER the inverter rating'}`],
+          ['Backup energy per day', `${dayTot.toFixed(2)} kWh on a day all backup equipment is used`],
+          ['Energy for the requested backup time', win ? `${win.e.toFixed(2)} kWh for ${win.n} h – the busiest ${win.n}-hour period, ${H.hh(win.s)}–${H.hh(win.s + win.n)}. Before battery depth of discharge and efficiency.` : 'Backup hours not stated by the customer'],
+          ...(three ? [['Backup load per phase (peak)', `L1 ${kw(resB.peakPh.L1)} · L2 ${kw(resB.peakPh.L2)} · L3 ${kw(resB.peakPh.L3)} kW against ${kw(res.pl)} kW per phase`]] : [])
+        ];
+        kv(sum, 1);
+        if (!pkOK || resB.over.length) para(`The selected backup equipment exceeds a limit of the ${inv.kw} kW inverter in ${hourRange(resB.over)}. The customer cannot run all of it together at those times on battery.`, { size: 8, color: 'C62828' });
+      }
+      // 1) what the customer actually signed online (the form declaration, word for word)
+      const box = t => { ensure(16); y += 2; d.rect(M, y, CW, 7, { fill: SOFT, stroke: LINE, width: 0.2 }); d.text(M + 2.5, y + 4.8, t, { size: 8.6, bold: true, color: NAVY }); y += 10; };
+      const sw2 = (CW - 10) / 3;
+      const sigRow = async (img, name, date, labels) => {
+        ensure(24);
+        const base = y + 16;
+        if (img) {
+          try { const sg = await dataUrlToJpeg(img); const h = 14, w = Math.min(sw2, h * sg.w / sg.h); d.image(sg.bytes, sg.w, sg.h, M, base - h - 0.5, w, h); } catch (e) { /* signature image unavailable */ }
+        }
+        [[labels[0], ''], [labels[1], name], [labels[2], date]].forEach(([l, val], i) => {
+          const x = M + i * (sw2 + 5);
+          if (val) d.text(x, base - 1.5, val, { size: 8.6, color: INK });
+          d.line(x, base, x + sw2, base, { color: '33415C', width: 0.3 });
+          d.text(x, base + 3.5, l, { size: 7.2, color: MUTED });
+        });
+        y = base + 7;
+      };
+      if (c.signature) {
+        box('Declaration signed online by the customer');
+        para('"I confirm that the information in this form is correct to the best of my knowledge, and I agree that Regen may use it to design my solar system."', { size: 8.2 });
+        await sigRow(c.signature, c.declName || c.name, signedOn, ['Customer signature (online)', 'Name', 'Date']);
+        para(`Signed in the ${formTxt}${P.formSubmitted ? ', submitted ' + new Date(P.formSubmitted).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : ''}. The form includes the customer's answer to "Needed during power cuts?" for every appliance, which is the list above.`, { size: 7.2, color: MUTED });
+      }
+      // 2) confirmation of the backup list, to be signed by the customer on this page
+      box('Customer confirmation of the battery backup equipment');
+      para(bk.length ? 'I confirm that the equipment listed on this page is the equipment I need to run from the battery during power cuts, and that the quantities, power ratings and hours of use are correct to the best of my knowledge. I understand that the battery backup system is sized for this equipment only, and that running other equipment, or this equipment for longer, may not be supported.'
+        : 'I confirm that I have not selected any equipment to run from the battery during power cuts. I understand that the system is not sized to supply my equipment from the battery during power cuts.', { size: 8.2 });
+      await sigRow(null, c.declName || c.name, '', ['Customer signature', 'Name', 'Date']);
+      y += 3;
+      ensure(16);
+      [['Regen representative', P.prep.by], ['Date', '']].forEach(([l, val], i) => {
+        const x = M + i * (sw2 + 5);
+        if (val) d.text(x, y + 6, val, { size: 8.6, color: INK });
+        d.line(x, y + 8, x + sw2, y + 8, { color: '33415C', width: 0.3 });
+        d.text(x, y + 11.5, l, { size: 7.2, color: MUTED });
+      });
+      y += 14;
+    }
 
     // ===== footer on every page =====
     const total = d.pageCount;
