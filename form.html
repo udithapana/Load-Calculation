@@ -43,6 +43,11 @@
 .tg::after{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin:-4px 0 0 4px}
 .ap:not(.min) .tg::after{transform:rotate(-135deg);margin:3px 0 0 4px}
 .ap-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between}
+.qfbox{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:12px;border-color:var(--gold);background:#fffaf0}
+.qftxt{flex:1 1 260px;min-width:0}
+.qfrow{display:flex;gap:8px;flex:1 1 260px;min-width:0}
+.qfrow select{flex:1;min-width:0}
+@media (max-width:520px){.qfrow{flex-wrap:wrap}.qfrow select{flex:1 1 100%}.qfrow .btn{flex:1 1 100%}}
 .listbar{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-top:14px}
 .ap-h .nm{flex:1;min-width:0}
 .ap-h .nm b{font-size:15.5px;color:var(--navy)}
@@ -196,7 +201,11 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   </div>
 
   <div class="sec-h"><span class="step">3</span><h2>Your appliances</h2></div>
-  <p class="muted small" style="margin:0 0 10px">Tap an appliance to add it, then tell us how many you have and the hours you usually use it. If you know the power rating from the label (W or kW), change the typical value we show. If you use a different number of the same appliance at different times (for example 3 fans in the evening but 1 at night), tap it again or use “Add for other times” to make a separate entry for each time.</p>
+  <p class="muted small" style="margin:0 0 10px">Or tap an appliance below to add it, then tell us how many you have and the hours you usually use it. If you know the power rating from the label (W or kW), change the typical value we show. If you use a different number of the same appliance at different times (for example 3 fans in the evening but 1 at night), tap it again or use “Add for other times” to make a separate entry for each time.</p>
+  <div class="card qfbox">
+    <div class="qftxt"><b>Quick start (optional)</b><p class="small muted" style="margin:2px 0 0">Load a typical appliance list for a home that uses about the same units (kWh) each month as yours. Then open each appliance to change the number, power or hours, and remove anything you don't have.</p></div>
+    <div class="qfrow"><select id="qFillF" aria-label="Typical list by monthly units"></select><button class="btn gold" id="qFillGo" type="button">Load list</button></div>
+  </div>
   <div class="cats" id="cats"></div>
   <div class="listbar" id="listBar" hidden><span class="muted small" id="listCount"></span><button class="btn sm" type="button" id="toggleAll">Minimise all</button></div>
   <div class="alist" id="alist"></div>
@@ -372,7 +381,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     return `<div class="ap-sum">
       <span>${a.qtyOn}${a.qtyOn !== a.qty ? ` of ${a.qty}` : ''} used at once${w ? ` × ${w}` : ' · <span class="warn">power rating missing</span>'} · ${hrs ? H.esc(hrs) : '<span class="warn">hours not set</span>'}${a.use !== 'daily' ? ' · ' + H.esc(H.USE_LABEL[a.use]) : ''}</span>
       ${strip}
-      ${a.b || a.f ? `<span class="pills">${a.b ? '<span class="pill info">Needed in power cuts</span>' : ''}${a.f ? '<span class="pill gold">Can use at another time</span>' : ''}</span>` : ''}</div>`;
+      ${a.b || a.f || a.tpl ? `<span class="pills">${a.tpl ? '<span class="pill high">Typical – please check</span>' : ''}${a.b ? '<span class="pill info">Needed in power cuts</span>' : ''}${a.f ? '<span class="pill gold">Can use at another time</span>' : ''}</span>` : ''}</div>`;
   }
   function setOpen(id, open) {
     open ? openCards.add(id) : openCards.delete(id);
@@ -384,7 +393,8 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     const n = state.appliances.length, bar = $('#listBar');
     bar.hidden = !n;
     if (!n) return;
-    $('#listCount').textContent = `${n} appliance entr${n === 1 ? 'y' : 'ies'}`;
+    const t = state.appliances.filter(a => a.tpl).length;
+    $('#listCount').textContent = `${n} appliance entr${n === 1 ? 'y' : 'ies'}${t ? ` · ${t} from the typical list still to check` : ''}`;
     $('#toggleAll').textContent = state.appliances.some(a => openCards.has(a.id)) ? 'Minimise all' : 'Expand all';
   }
   $('#toggleAll').addEventListener('click', () => {
@@ -397,6 +407,34 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     L.innerHTML = state.appliances.length ? state.appliances.map(cardHTML).join('') : '<div class="empty">No appliances added yet. Open a group above and tap an appliance to add it.</div>';
     updateListBar();
   }
+  // ---------- quick start: typical lists by monthly units ----------
+  function billUnits() { const c = state.customer; return H.touOn(c) && H.hasTouValues(c) ? H.touTotal(c) : parseFloat(c.units); }
+  function renderQF() {
+    const sel = $('#qFillF'), cur = sel.value, u = billUnits();
+    const near = isFinite(u) && u > 0 ? H.TEMPLATE_LEVELS.reduce((b, l) => Math.abs(l - u) < Math.abs(b - u) ? l : b, H.TEMPLATE_LEVELS[0]) : null;
+    sel.innerHTML = '<option value="">Choose your monthly units…</option>' + H.TEMPLATE_LEVELS.map(l => `<option value="${l}">About ${l.toLocaleString('en-US')} units a month${l === near ? ' (your bill)' : ''}</option>`).join('');
+    sel.value = cur || (near ? String(near) : '');
+  }
+  function loadTypical(level, mode) {
+    const list = H.buildTemplate(level).map(a => { a.tpl = true; return a; });
+    if (mode === 'replace') { state.appliances = list; openCards.clear(); }
+    else for (const a of list) { if (state.appliances.some(x => x.name === a.name)) a.name = H.entryName(state.appliances, a); state.appliances.push(a); }
+    save(); renderCats(); renderList();
+    const bar = $('#listBar'), hdr = document.querySelector('header.topbar');
+    window.scrollTo({ top: bar.getBoundingClientRect().top + window.scrollY - (hdr ? hdr.offsetHeight : 0) - 10, behavior: 'smooth' });
+    toast(`Typical list loaded – open each appliance to check it`);
+  }
+  $('#qFillGo').addEventListener('click', () => {
+    const level = +$('#qFillF').value;
+    if (!level) { toast('Choose your monthly units first'); $('#qFillF').focus(); return; }
+    if (!state.appliances.length) { loadTypical(level, 'replace'); return; }
+    const m = modal(`<h3>Load the typical list?</h3><p>You have already added ${state.appliances.length} appliance entr${state.appliances.length === 1 ? 'y' : 'ies'}. Replace them with the typical list, or add the typical list to them?</p>
+      <div class="acts"><button class="btn" data-close>Cancel</button><button class="btn" id="qfAdd">Add to my list</button><button class="btn primary" id="qfRep">Replace my list</button></div>`);
+    m.querySelector('#qfAdd').onclick = () => { m.remove(); loadTypical(level, 'add'); };
+    m.querySelector('#qfRep').onclick = () => { m.remove(); loadTypical(level, 'replace'); };
+  });
+  ['c_units', 'c_touDay', 'c_touPeak', 'c_touOff', 'c_tariff', 'c_tou'].forEach(id => $('#' + id).addEventListener('input', renderQF));
+  $('#c_tou').addEventListener('change', renderQF);
   const findA = el => { const c = el.closest('.ap'); return c && state.appliances.find(a => a.id === c.dataset.id); };
   $('#alist').addEventListener('click', e => {
     const a = findA(e.target); if (!a) return;
@@ -406,11 +444,13 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
     if (act === 'again') { addAgain(a, false); return; }
     if (act === 'toggle') {
       const willOpen = !openCards.has(a.id);
+      if (!willOpen && a.tpl) { a.tpl = false; save(); }
       setOpen(a.id, willOpen);
       const el = document.querySelector(`.ap[data-id="${a.id}"]`);
       if (el && !willOpen && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
       return;
     }
+    if (a.tpl && (act || e.target.closest('.hp-c, [data-pre], [data-unit] button, [data-yn] button'))) a.tpl = false;
     if (act && /^[qo][+-]$/.test(act)) {
       const f = act[0] === 'q' ? 'qty' : 'qtyOn', d = act[1] === '+' ? 1 : -1;
       a[f] = Math.max(0, a[f] + d);
@@ -432,6 +472,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   $('#alist').addEventListener('input', e => {
     const a = findA(e.target); const f = e.target.dataset.f; if (!a || !f) return;
     const v = e.target.value;
+    a.tpl = false;
     if (f === 'name' || f === 'notes' || f === 'use') a[f] = v;
     else if (f === 'w') a.w = Math.max(0, H.num(v)) * (a.unit === 'kW' ? 1000 : 1);
     else if (f === 'hpd') { a.hpdManual = v !== '' && +v !== H.countHrs(a.hrs); a.hpd = Math.min(24, Math.max(0, H.num(v, H.countHrs(a.hrs)))); }
@@ -638,7 +679,7 @@ details.alt>summary{cursor:pointer;color:var(--navy);font-weight:600;font-size:1
   }
   $('#printBlank').addEventListener('click', () => { buildPrint(true); printWhenReady(); });
 
-  renderCats(); renderList(); updateSum(); sizeCanvas(); renderSent();
+  renderCats(); renderList(); updateSum(); sizeCanvas(); renderSent(); renderQF();
   if (params.get('blank') === '1') { buildPrint(true); window.addEventListener('load', () => printWhenReady(300)); }
   window.__hlcForm = { state, buildPrint, payload };   // used by automated tests
 })();

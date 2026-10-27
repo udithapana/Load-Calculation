@@ -426,7 +426,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
       <div class="mo tnum" title="${esc(`${(H.kwhDay(a)).toFixed(2)} kWh on a day it is used × ${H.daysPerMonth(a)} days`)}"><b>${fmtMonth(H.kwhMonth(a))}</b> kWh/month<small>${H.daysPerMonth(a) === 30 ? 'every day' : H.daysPerMonth(a) + ' days a month'}</small></div>
       <div class="ld tnum">${a.qtyOn}${a.qtyOn !== a.qty ? ` of ${a.qty}` : ''} × ${a.w >= 1000 ? (a.w / 1000) + ' kW' : a.w + ' W'} = <b>${kw.toFixed(2)} kW</b></div>
       ${stripHTML(a.hrs)}
-      <div class="badges">${a.b ? '<span class="pill info">Power cut</span>' : ''}${a.f ? '<span class="pill gold">Flexible</span>' : ''}${+P.inv.phase === 3 ? `<span class="pill info">${a.ph === '3P' ? '3-phase' : (a.ph || 'L1')}${a.phLock ? ' · fixed' : ''}</span>` : ''}${!scoped ? '<span class="pill high">Not checked</span>' : ''}</div>`;
+      <div class="badges">${a.tpl ? '<span class="pill high" title="Loaded from a typical list and not changed or checked by the customer">Typical – not checked</span>' : ''}${a.b ? '<span class="pill info">Power cut</span>' : ''}${a.f ? '<span class="pill gold">Flexible</span>' : ''}${+P.inv.phase === 3 ? `<span class="pill info">${a.ph === '3P' ? '3-phase' : (a.ph || 'L1')}${a.phLock ? ' · fixed' : ''}</span>` : ''}${!scoped ? '<span class="pill high">Not checked</span>' : ''}</div>`;
   }
   const yn = (k, v, labels = ['Yes', 'No']) => `<div class="seg" data-yn="${k}"><button type="button" data-v="1" class="${v ? 'on' : ''}">${labels[0]}</button><button type="button" data-v="0" class="${!v ? 'on' : ''}">${labels[1]}</button></div>`;
   function bodyHTML(a) {
@@ -494,6 +494,7 @@ table.ht{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
   $('#alist').addEventListener('input', e => {
     const a = findA(e.target); const f = e.target.dataset.f; if (!a || !f) return;
     const v = e.target.value;
+    a.tpl = false;
     switch (f) {
       case 'name': case 'notes': a[f] = v; break;
       case 'w': a.w = Math.max(0, H.num(v)) * (a.unit === 'kW' ? 1000 : 1); break;

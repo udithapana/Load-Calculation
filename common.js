@@ -187,6 +187,7 @@ const HLC = (() => {
     a.notes = String(a.notes ?? '').slice(0, 300);
     a.ph = ['L1', 'L2', 'L3', '3P'].includes(a.ph) ? a.ph : '';
     a.phLock = !!a.phLock;
+    a.tpl = !!a.tpl;            // from a typical list and not yet checked by the customer
     return a;
   }
   const USE_LABEL = { daily: 'Every day', weekdays: 'Weekdays', weekends: 'Weekends', occasional: 'Occasionally' };
