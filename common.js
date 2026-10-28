@@ -255,7 +255,7 @@ const HLC = (() => {
   const kwhMonth = a => kwhDay(a) * daysPerMonth(a);
 
   // ---------- quick-fill typical lists (editable starting points), by monthly units ----------
-  const TEMPLATE_LEVELS = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
+  const TEMPLATE_LEVELS = Array.from({ length: 20 }, (_, i) => (i + 1) * 100);   // 100 … 2,000 kWh/month
   const TPL = (() => {
   const R = (a, b) => { const h = []; for (let x = a; x < b; x++) h.push(x % 24); return h; };
   const ALL = 'all';
@@ -294,6 +294,26 @@ const HLC = (() => {
     freezer: ['freezer', 1, 1, ALL, null, { b: 1 }],
     dish:    ['dishwasher', 1, 1, [20], 1, { f: 1 }],
     ev:      ['ev_charger', 1, 1, [22], 1, { f: 1, w: 3700, notes: 'Single-phase 16 A charger' }],
+    // larger homes (1,100–2,000 kWh/month)
+    desktop: ['desktop', 1, 1, [9, 10, 11, 12, 13, 14, 15, 16], null, { b: 1, notes: 'Home office' }],
+    geyser2: ['geyser', 1, 1, [19], 1, { f: 1, notes: 'Second bathroom' }],
+    dispenser:['dispenser', 1, 1, ALL, null, {}],
+    garden:  ['outdoor_light', 4, 4, [18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5], null, { notes: 'Garden lights' }],
+    oven:    ['oven', 1, 1, [19], 0.5, { f: 1 }],
+    freezer2: ['freezer', 1, 1, ALL, null, { b: 1, notes: 'Second freezer' }],
+    dryer:   ['dryer', 1, 1, [10, 11], 1.5, { f: 1, use: 'weekends' }],
+    ac4_4:   ['ac_inv_18', 1, 1, [22, 23, 0, 1], null, { notes: 'Master bedroom' }],
+    ac4_6:   ['ac_inv_18', 1, 1, [22, 23, 0, 1, 2, 3], null, { notes: 'Master bedroom' }],
+    ac4_8:   ['ac_inv_18', 1, 1, [22, 23, 0, 1, 2, 3, 4, 5], null, { notes: 'Master bedroom' }],
+    ac5_4:   ['ac_inv_24', 1, 1, [14, 15, 16, 17], null, { notes: 'Living room' }],
+    ac5_6:   ['ac_inv_24', 1, 1, [12, 13, 14, 15, 16, 17], null, { notes: 'Living room' }],
+    ac5_8:   ['ac_inv_24', 1, 1, [11, 12, 13, 14, 15, 16, 17, 18], null, { notes: 'Living room' }],
+    ev2:     ['ev_charger', 1, 1, [22, 23], 2, { f: 1, w: 3700, notes: 'Single-phase 16 A charger' }],
+    ev3:     ['ev_charger', 1, 1, [22, 23, 0], 3, { f: 1, w: 3700, notes: 'Single-phase 16 A charger' }],
+    booster: ['booster', 1, 1, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21], null, { notes: 'Pressure pump' }],
+    tv3:     ['tv_large', 1, 1, [18, 19, 20, 21, 22], null, { notes: 'Second TV' }],
+    laptop2: ['laptop', 2, 2, [18, 19, 20, 21, 22], null, {}],
+    treadmill:['treadmill', 1, 1, [6], 0.5, { f: 1 }],
   };
   const T = {
     100: ['bulbs', 'fridge', 'tv', 'fan1', 'rice', 'router', 'charge', 'iron'],
@@ -307,6 +327,16 @@ const HLC = (() => {
   T[800] = T[500].concat(['ac2_8', 'freezer', 'ac3_3']);
   T[900] = T[500].concat(['ac2_8', 'freezer', 'ac3_5', 'dish']).map(x => x === 'fans2' ? 'fans3' : x);
   T[1000] = T[900].concat(['ev']);
+  T[1100] = T[1000].concat(['desktop', 'treadmill']);
+  T[1200] = T[1000].concat(['desktop', 'treadmill', 'freezer2', 'dryer']);
+  T[1300] = T[1000].concat(['desktop', 'treadmill', 'freezer2', 'dryer', 'dispenser']);
+  T[1400] = T[1000].concat(['desktop', 'treadmill', 'freezer2', 'dryer', 'dispenser', 'geyser2', 'garden']);
+  T[1500] = T[1000].concat(['desktop', 'treadmill', 'freezer2', 'dryer', 'dispenser', 'geyser2', 'garden', 'booster']);
+  T[1600] = T[1000].filter(x => !['ev'].includes(x)).concat(['desktop', 'treadmill', 'freezer2', 'dryer', 'dispenser', 'geyser2', 'garden', 'booster', 'ev2']);
+  T[1700] = T[1000].filter(x => !['ev'].includes(x)).concat(['desktop', 'treadmill', 'freezer2', 'dryer', 'dispenser', 'geyser2', 'garden', 'booster', 'ev3']);
+  T[1800] = T[1000].filter(x => !['ev'].includes(x)).concat(['desktop', 'treadmill', 'freezer2', 'dryer', 'dispenser', 'geyser2', 'garden', 'booster', 'ev3', 'oven', 'tv3']);
+  T[1900] = T[1000].filter(x => !['ev'].includes(x)).concat(['desktop', 'treadmill', 'freezer2', 'dryer', 'dispenser', 'geyser2', 'garden', 'booster', 'ev3', 'oven', 'tv3', 'ac4_4']);
+  T[2000] = T[1000].filter(x => !['ev'].includes(x)).concat(['desktop', 'treadmill', 'freezer2', 'dryer', 'dispenser', 'geyser2', 'garden', 'booster', 'ev3', 'oven', 'tv3', 'ac4_6', 'laptop2']);
     return { L, T };
   })();
   function buildTemplate(level) {
